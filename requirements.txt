@@ -1,0 +1,9 @@
+aiogram
+supabase
+asyncpg
+python-dotenv
+openai
+httpx
+apscheduler
+openpyxl
+yookassa 
