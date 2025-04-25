@@ -18,6 +18,8 @@ from openpyxl.styles import Font, Alignment, Border, Side
 import httpx
 from .payments import create_payment_link
 
+SUBSCRIPTION_AMOUNT = os.getenv("SUBSCRIPTION_AMOUNT", "800")
+
 MAIN_MENU = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text="Получить новую тренировку")],
@@ -62,7 +64,7 @@ async def require_payment(message: types.Message, user=None):
     if user is None:
         user = await get_user_by_telegram_id(message.from_user.id)
     if not user or not user.get("is_paid"):
-        await message.answer("Эта функция доступна только после оплаты подписки. Используй /pay для получения доступа.")
+        await message.answer(f"Эта функция доступна только после оплаты подписки (стоимость {SUBSCRIPTION_AMOUNT}₽). Используй /pay для получения доступа.")
         return False
     return True
 
@@ -220,7 +222,7 @@ async def process_gender(message: types.Message, state: FSMContext):
         await message.answer(
             "Спасибо! Вот твоя первая бесплатная тренировка:\n\n" +
             workout_text +
-            "\n\nЕсли хочешь получить доступ к персональным тренировкам и другим функциям — оформи подписку!"
+            f"\n\nЕсли хочешь получить доступ к персональным тренировкам и другим функциям — оформи подписку! Стоимость подписки: {SUBSCRIPTION_AMOUNT}₽."
         )
         await state.clear()
     except Exception as e:
@@ -235,7 +237,7 @@ async def cmd_pay(message: types.Message):
             metadata={"telegram_id": str(message.from_user.id)}
         )
         await message.answer(
-            f"Для оплаты подписки перейдите по ссылке: {pay_url}\n\nПосле оплаты напишите администратору или дождитесь подтверждения."
+            f"Для оплаты подписки (стоимость {SUBSCRIPTION_AMOUNT}₽) перейдите по ссылке: {pay_url}\n\nПосле оплаты напишите администратору или дождитесь подтверждения."
         )
     except Exception as e:
         await message.answer("Ошибка при создании платежа. Попробуйте позже.")
@@ -261,7 +263,7 @@ async def cmd_confirm_payment(message: types.Message):
 @router.callback_query(lambda c: c.data == "pay_link")
 async def process_pay_link(callback_query: types.CallbackQuery):
     pay_url = "https://yookassa.ru/pay/demo-link"
-    await callback_query.message.answer(f"Для доступа ко всем функциям бота оплати подписку по ссылке: {pay_url}\n\nПосле оплаты напиши администратору или дождись подтверждения.")
+    await callback_query.message.answer(f"Для доступа ко всем функциям бота оплати подписку (стоимость {SUBSCRIPTION_AMOUNT}₽) по ссылке: {pay_url}\n\nПосле оплаты напиши администратору или дождись подтверждения.")
     await callback_query.answer()
 
 @router.message(F.text == "Получить новую тренировку")
@@ -565,11 +567,11 @@ async def any_message_handler(message: types.Message, state: FSMContext):
     if user and not user.get("is_paid"):
         pay_keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
-                [InlineKeyboardButton(text="Оплатить подписку", callback_data="pay_link")]
+                [InlineKeyboardButton(text=f"Оплатить подписку ({SUBSCRIPTION_AMOUNT}₽)", callback_data="pay_link")]
             ]
         )
         await message.answer(
-            "Чтобы получить доступ к персональным тренировкам и другим функциям, оплати подписку. После оплаты напиши администратору или дождись подтверждения.",
+            f"Чтобы получить доступ к персональным тренировкам и другим функциям, оплати подписку. Стоимость подписки: {SUBSCRIPTION_AMOUNT}₽. После оплаты напиши администратору или дождись подтверждения.",
             reply_markup=pay_keyboard
         )
         return
