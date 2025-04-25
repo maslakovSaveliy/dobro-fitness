@@ -3,7 +3,7 @@ import httpx
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from aiogram import Bot
 from datetime import datetime, timedelta
-from .db import get_users_for_renewal, update_subscription_until
+from .db import get_users_for_renewal, update_subscription_until, deactivate_expired_subscriptions
 from .payments import charge_subscription
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
@@ -38,8 +38,12 @@ async def auto_charge_expired(bot: Bot):
         else:
             await bot.send_message(user["telegram_id"], f"Не удалось списать оплату за подписку: {err}. Попробуйте оплатить вручную с помощью /pay.")
 
+async def daily_deactivate_expired():
+    await deactivate_expired_subscriptions()
+
 async def scheduler_start():
     scheduler = AsyncIOScheduler()
     scheduler.add_job(send_reminders, "interval", days=1)
     scheduler.add_job(auto_charge_expired, "interval", days=1, args=[bot])
+    scheduler.add_job(daily_deactivate_expired, 'interval', days=1)
     scheduler.start() 

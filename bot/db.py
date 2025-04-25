@@ -188,4 +188,22 @@ async def update_subscription_until(telegram_id, new_until):
     data = {"subscription_until": new_until.isoformat()}
     params = {"telegram_id": f"eq.{telegram_id}"}
     async with httpx.AsyncClient() as client:
-        await client.patch(url, headers=headers, params=params, json=data) 
+        await client.patch(url, headers=headers, params=params, json=data)
+
+async def deactivate_expired_subscriptions():
+    today = datetime.utcnow().date().isoformat()
+    async with httpx.AsyncClient() as client:
+        # Получаем всех пользователей с истекшей подпиской
+        resp = await client.get(
+            f"{SUPABASE_API}/users",
+            params={"paid_until": f"lt.{today}", "is_paid": "eq.true"},
+            headers=HEADERS
+        )
+        users = resp.json()
+        for user in users:
+            await client.patch(
+                f"{SUPABASE_API}/users",
+                params={"telegram_id": f"eq.{user['telegram_id']}"},
+                headers=HEADERS,
+                json={"is_paid": False}
+            ) 

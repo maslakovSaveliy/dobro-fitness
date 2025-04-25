@@ -49,8 +49,12 @@ async def create_payment_link(amount=None, description=None, return_url=None, me
 async def update_payment_status(payment_id, paid, payment_method_id=None, telegram_id=None):
     print(f"PAYMENT STATUS: {payment_id} paid={paid} payment_method_id={payment_method_id} telegram_id={telegram_id}")
     if paid and payment_method_id and telegram_id:
-        from .db import save_payment_method_id
+        from .db import save_payment_method_id, confirm_payment
         await save_payment_method_id(telegram_id, payment_method_id)
+        await confirm_payment(int(telegram_id))
+    elif paid and telegram_id:
+        from .db import confirm_payment
+        await confirm_payment(int(telegram_id))
     # Здесь остальная логика обновления пользователя в БД
 
 # aiohttp webhook handler
@@ -91,7 +95,8 @@ async def charge_subscription(telegram_id, amount=None, description=None):
                 "currency": "RUB"
             },
             "payment_method_id": payment_method_id,
-            "capture": True,
+            "capture": True, 
+            "save_payment_method": True,
             "description": description,
             "metadata": {"telegram_id": str(telegram_id)},
             "receipt": {
