@@ -3,6 +3,8 @@ import uuid
 from yookassa import Configuration, Payment
 from aiohttp import web
 import json
+from fastapi import Request
+from fastapi.responses import PlainTextResponse
 
 async def create_payment_link(amount=None, description=None, return_url=None, metadata=None):
     Configuration.account_id = os.getenv("YOOKASSA_SHOP_ID")
@@ -50,11 +52,15 @@ async def update_payment_status(payment_id, paid, payment_method_id=None, telegr
     print(f"PAYMENT STATUS: {payment_id} paid={paid} payment_method_id={payment_method_id} telegram_id={telegram_id}")
     if paid and payment_method_id and telegram_id:
         from .db import save_payment_method_id, confirm_payment
+        from bot.main import bot
         await save_payment_method_id(telegram_id, payment_method_id)
         await confirm_payment(int(telegram_id))
+        await bot.send_message(int(telegram_id), "Ваша подписка успешно оплачена! Спасибо!")
     elif paid and telegram_id:
         from .db import confirm_payment
+        from bot.main import bot
         await confirm_payment(int(telegram_id))
+        await bot.send_message(int(telegram_id), "Ваша подписка успешно оплачена! Спасибо!")
     # Здесь остальная логика обновления пользователя в БД
 
 # aiohttp webhook handler
@@ -123,4 +129,18 @@ async def charge_subscription(telegram_id, amount=None, description=None):
         else:
             return False, f"Статус платежа: {payment.status}"
     except Exception as e:
-        return False, str(e) 
+        return False, str(e)
+
+async def yookassa_webhook_fastapi(request: Request):
+    body = await request.body()
+    data = json.loads(body)
+    print(f"YooKassa webhook: {data}")
+    if data.get("event") == "payment.succeeded":
+        payment_obj = data["object"]
+        payment_id = payment_obj["id"]
+        payment_method_id = payment_obj.get("payment_method", {}).get("id")
+        telegram_id = None
+        if "metadata" in payment_obj and "telegram_id" in payment_obj["metadata"]:
+            telegram_id = payment_obj["metadata"]["telegram_id"]
+        await update_payment_status(payment_id, paid=True, payment_method_id=payment_method_id, telegram_id=telegram_id)
+    return PlainTextResponse("OK") 

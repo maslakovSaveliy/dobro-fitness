@@ -206,4 +206,16 @@ async def deactivate_expired_subscriptions():
                 params={"telegram_id": f"eq.{user['telegram_id']}"},
                 headers=HEADERS,
                 json={"is_paid": False}
-            ) 
+            )
+
+async def save_payment_method_id(telegram_id: int, payment_method_id: str):
+    url = f"{os.getenv('SUPABASE_URL')}/rest/v1/users"
+    headers = {
+        "apikey": os.getenv('SUPABASE_KEY'),
+        "Authorization": f"Bearer {os.getenv('SUPABASE_KEY')}",
+        "Content-Type": "application/json"
+    }
+    data = {"payment_method_id": payment_method_id}
+    params = {"telegram_id": f"eq.{telegram_id}"}
+    async with httpx.AsyncClient() as client:
+        await client.patch(url, headers=headers, params=params, json=data) 
