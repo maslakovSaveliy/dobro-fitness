@@ -9,7 +9,7 @@ from .db import (
     create_user, update_user_profile, get_user_by_telegram_id, add_workout, confirm_payment, add_meal, update_last_active,
     get_user_workouts, get_user_meals
 )
-from .ai import ask_gpt, generate_workout_via_ai, analyze_food_photo_via_ai
+from .ai import ask_gpt, generate_workout_via_ai, analyze_food_photo_via_ai, generate_workout_via_ai_with_history
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton, InputFile
 from aiogram.types import BufferedInputFile
 import io
@@ -49,6 +49,8 @@ class PushStates(StatesGroup):
     waiting_for_text = State()
     waiting_for_audience = State()
     waiting_for_confirm = State()
+
+WORKOUT_STATE = "workout_state"
 
 async def mark_active(message):
     await update_last_active(message.from_user.id)
@@ -267,7 +269,7 @@ async def process_pay_link(callback_query: types.CallbackQuery):
     await callback_query.answer()
 
 @router.message(F.text == "Получить новую тренировку")
-async def get_new_workout(message: types.Message):
+async def get_new_workout(message: types.Message, state: FSMContext):
     await mark_active(message)
     try:
         user = await get_user_by_telegram_id(message.from_user.id)
@@ -275,15 +277,64 @@ async def get_new_workout(message: types.Message):
             return
         await message.answer("Команда принята, обрабатываю...")
         workout_text = await generate_workout_via_ai(user)
-        await add_workout(
-            user_id=user["id"],
-            workout_type="personal",
-            details=workout_text
+        # Сохраняем тренировку и историю в FSMContext
+        await state.update_data(workout_text=workout_text, workout_history=[{"role": "user", "content": "Запрос тренировки"}, {"role": "assistant", "content": workout_text}])
+        # Кнопки
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="Выполнил", callback_data="workout_done")],
+                [InlineKeyboardButton(text="Изменить тренировку", callback_data="workout_change")],
+            ]
         )
-        await message.answer(workout_text, reply_markup=MAIN_MENU)
+        await message.answer(workout_text, reply_markup=kb)
     except Exception as e:
         await message.answer("Произошла ошибка при получении тренировки. Попробуйте позже.")
         print(f"Ошибка в get_new_workout: {e}")
+
+@router.callback_query(lambda c: c.data == "workout_done")
+async def workout_done_callback(callback_query: types.CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    workout_text = data.get("workout_text")
+    user = await get_user_by_telegram_id(callback_query.from_user.id)
+    # Сохраняем только последнюю подтверждённую тренировку
+    await add_workout(
+        user_id=user["id"],
+        workout_type="personal",
+        details=workout_text
+    )
+    # Удаляем сообщение с кнопками
+    await callback_query.message.delete()
+    await callback_query.message.answer("Молодец, так держать!", reply_markup=MAIN_MENU)
+    await state.clear()
+    await callback_query.answer()
+
+@router.callback_query(lambda c: c.data == "workout_change")
+async def workout_change_callback(callback_query: types.CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    user = await get_user_by_telegram_id(callback_query.from_user.id)
+    workout_history = data.get("workout_history", [])
+    # Добавляем сообщение пользователя о недовольстве
+    workout_history.append({"role": "user", "content": "Не нравится, давай другую тренировку."})
+    # Уведомляем пользователя о начале генерации
+    wait_msg = await callback_query.message.answer("Запрос принят, генерирую новую тренировку. Пожалуйста, подождите...")
+    # Формируем промпт для новой тренировки с историей
+    new_workout_text = await generate_workout_via_ai_with_history(user, workout_history)
+    # Обновляем историю
+    workout_history.append({"role": "assistant", "content": new_workout_text})
+    await state.update_data(workout_text=new_workout_text, workout_history=workout_history)
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Выполнил", callback_data="workout_done")],
+            [InlineKeyboardButton(text="Изменить тренировку", callback_data="workout_change")],
+        ]
+    )
+    # Удаляем старое сообщение с кнопками
+    await callback_query.message.delete()
+    # Удаляем уведомление о генерации
+    await wait_msg.delete()
+    # Отправляем новую тренировку с кнопками
+    await callback_query.message.answer(new_workout_text, reply_markup=kb)
+    await callback_query.answer()
 
 @router.message(F.text == "Подсчет калорий")
 async def start_calories(message: types.Message, state: FSMContext):
