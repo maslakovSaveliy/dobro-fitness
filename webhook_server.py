@@ -2,16 +2,14 @@ from fastapi import FastAPI, Request
 import os
 import sys
 
-# Добавляем путь к папке bot, чтобы можно было импортировать твой код
 sys.path.append(os.path.join(os.path.dirname(__file__), "bot"))
 
-from bot.main import bot, dp  # Импортируем твой основной бот и диспетчер
+from bot.main import bot, dp 
 from aiogram import types
-from bot.payments import yookassa_webhook_fastapi  # Импортируем FastAPI-обработчик для ЮKassa
+from bot.payments import yookassa_webhook_fastapi 
 
 app = FastAPI()
 
-# Регистрируем эндпоинт для ЮKassa через FastAPI
 @app.post("/yookassa/webhook")
 async def yookassa_webhook_entrypoint(request: Request):
     return await yookassa_webhook_fastapi(request)

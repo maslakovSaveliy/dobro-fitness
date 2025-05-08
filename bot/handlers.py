@@ -281,6 +281,7 @@ async def process_pay_link(callback_query: types.CallbackQuery):
 
 @router.message(F.text == "Получить новую тренировку")
 async def get_new_workout(message: types.Message, state: FSMContext):
+    await state.clear()
     await mark_active(message)
     try:
         user = await get_user_by_telegram_id(message.from_user.id)
@@ -349,6 +350,7 @@ async def workout_change_callback(callback_query: types.CallbackQuery, state: FS
 
 @router.message(F.text == "Подсчет калорий")
 async def start_calories(message: types.Message, state: FSMContext):
+    await state.clear()
     await mark_active(message)
     try:
         user = await get_user_by_telegram_id(message.from_user.id)
@@ -393,18 +395,32 @@ async def process_calories_photo(message: types.Message, state: FSMContext):
 
 @router.message(CaloriesStates.waiting_for_photo)
 async def process_calories_not_photo(message: types.Message, state: FSMContext):
+    print(f"DEBUG: process_calories_not_photo called, message.text = '{message.text}'")
+    if message.text in MENU_BUTTONS:
+        await state.clear()
+        if message.text == "История":
+            await show_history(message, state)
+        elif message.text == "Получить новую тренировку":
+            await get_new_workout(message, state)
+        elif message.text == "Подсчет калорий":
+            await start_calories(message, state)
+        return
     await message.answer("Пожалуйста, отправь именно фото еды.")
 
 @router.message(F.text == "История")
-async def show_history(message: types.Message):
+async def show_history(message: types.Message, state: FSMContext):
+    print("DEBUG: show_history called, state cleared")
+    await state.clear()
     await mark_active(message)
     menu = await get_main_menu(message.from_user.id)
     try:
         user = await get_user_by_telegram_id(message.from_user.id)
         if not await require_payment(message, user):
             return
+        print("DEBUG: show_history - user and payment ok")
         workouts = await get_user_workouts(user["id"])
         meals = await get_user_meals(user["id"])
+        print(f"DEBUG: show_history - workouts: {len(workouts)}, meals: {len(meals)}")
         wb = openpyxl.Workbook()
         ws1 = wb.active
         ws1.title = "Тренировки"
@@ -475,6 +491,7 @@ async def show_history(message: types.Message):
         wb.save(file_stream)
         file_stream.seek(0)
         excel_file = BufferedInputFile(file_stream.read(), filename="history.xlsx")
+        print("DEBUG: show_history - Excel file ready, sending to user")
         await message.answer_document(
             excel_file,
             caption="Ваша история в формате Excel",
