@@ -41,9 +41,22 @@ async def auto_charge_expired(bot: Bot):
 async def daily_deactivate_expired():
     await deactivate_expired_subscriptions()
 
+async def process_recurrent_payments():
+    users = await get_users_for_renewal()
+    for user in users:
+        telegram_id = user["telegram_id"]
+        ok, err = await charge_subscription(telegram_id)
+        if ok:
+            new_until = datetime.utcnow() + timedelta(days=30)
+            await update_subscription_until(telegram_id, new_until)
+            await bot.send_message(telegram_id, "С вашей карты успешно списана оплата за подписку на месяц. Спасибо!")
+        else:
+            await bot.send_message(telegram_id, f"Не удалось автоматически продлить подписку: {err}. Пожалуйста, оплатите вручную с помощью /pay.")
+
 async def scheduler_start():
     scheduler = AsyncIOScheduler()
     scheduler.add_job(send_reminders, "interval", days=1)
     scheduler.add_job(auto_charge_expired, "interval", days=1, args=[bot])
     scheduler.add_job(daily_deactivate_expired, 'interval', days=1)
+    scheduler.add_job(process_recurrent_payments, 'interval', days=1)
     scheduler.start() 

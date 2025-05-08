@@ -17,6 +17,7 @@ import openpyxl
 from openpyxl.styles import Font, Alignment, Border, Side
 import httpx
 from .payments import create_payment_link
+from datetime import datetime
 
 SUBSCRIPTION_AMOUNT = os.getenv("SUBSCRIPTION_AMOUNT", "800")
 
@@ -68,6 +69,16 @@ async def require_payment(message: types.Message, user=None):
     if not user or not user.get("is_paid"):
         await message.answer(f"Эта функция доступна только после оплаты подписки (стоимость {SUBSCRIPTION_AMOUNT}₽). Используй /pay для получения доступа.")
         return False
+    # Новая проверка даты окончания подписки
+    paid_until = user.get("paid_until")
+    if paid_until:
+        try:
+            paid_until_date = datetime.fromisoformat(paid_until)
+            if paid_until_date < datetime.utcnow():
+                await message.answer("Ваша подписка истекла. Оформите новую для доступа к функциям с помощью /pay")
+                return False
+        except Exception:
+            pass
     return True
 
 # --- Хендлеры ---
@@ -224,7 +235,7 @@ async def process_gender(message: types.Message, state: FSMContext):
         await message.answer(
             "Спасибо! Вот твоя первая бесплатная тренировка:\n\n" +
             workout_text +
-            f"\n\nЕсли хочешь получить доступ к персональным тренировкам и другим функциям — оформи подписку! Стоимость подписки: {SUBSCRIPTION_AMOUNT}₽."
+            f"\n\nЕсли хочешь получить доступ к персональным тренировкам и другим функциям — оформи подписку! Стоимость подписки: {SUBSCRIPTION_AMOUNT}₽. /pay"
         )
         await state.clear()
     except Exception as e:
