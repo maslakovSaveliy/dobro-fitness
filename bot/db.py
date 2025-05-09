@@ -23,7 +23,14 @@ async def get_user_by_telegram_id(telegram_id: int):
             headers=HEADERS
         )
         data = resp.json()
-        return data[0] if data else None
+        print(f"DEBUG get_user_by_telegram_id: data={{}} type={{}}".format(data, type(data)))
+        if not data:
+            return None
+        if isinstance(data, list):
+            return data[0] if data else None
+        if isinstance(data, dict):
+            return data
+        return None
 
 async def create_user(telegram_id: int, username: str = None, first_name: str = None, last_name: str = None):
     user = await get_user_by_telegram_id(telegram_id)
@@ -163,15 +170,16 @@ async def get_user_meals(user_id: str, limit: int = 10):
         )
         return resp.json()
 
-async def get_users_for_renewal():
+async def get_users_for_renewal(reminder_days: int = 3):
     url = f"{os.getenv('SUPABASE_URL')}/rest/v1/users"
     headers = {
         "apikey": os.getenv('SUPABASE_KEY'),
         "Authorization": f"Bearer {os.getenv('SUPABASE_KEY')}",
     }
-    today = datetime.utcnow().date().isoformat()
+    today = datetime.utcnow().date()
+    target_date = (today + timedelta(days=reminder_days)).isoformat()
     params = {
-        "subscription_until": f"lte.{today}",
+        "paid_until": f"lte.{target_date}",
         "payment_method_id": "not.is.null"
     }
     async with httpx.AsyncClient() as client:
