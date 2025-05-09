@@ -72,5 +72,5 @@ async def scheduler_start():
     scheduler = AsyncIOScheduler()
     scheduler.add_job(send_reminders, "interval", days=1)
     scheduler.add_job(daily_deactivate_expired, 'interval', days=1)
-    scheduler.add_job(process_recurrent_payments, 'interval', minutes=1)
+    scheduler.add_job(process_recurrent_payments, 'interval', days=1)
     scheduler.start() 
