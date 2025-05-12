@@ -7,7 +7,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup, default_state
 from .db import (
     create_user, update_user_profile, get_user_by_telegram_id, add_workout, confirm_payment, add_meal, update_last_active,
-    get_user_workouts, get_user_meals
+    get_user_workouts, get_user_meals, remove_payment_method_id
 )
 from .ai import ask_gpt, generate_workout_via_ai, analyze_food_photo_via_ai, generate_workout_via_ai_with_history
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton, InputFile
@@ -20,6 +20,7 @@ from .payments import create_payment_link
 from datetime import datetime
 
 SUBSCRIPTION_AMOUNT = os.getenv("SUBSCRIPTION_AMOUNT", "800")
+MANAGER_NICK = os.getenv("MANAGER_NICK", "@your_manager")
 
 MAIN_MENU = ReplyKeyboardMarkup(
     keyboard=[
@@ -601,7 +602,7 @@ async def get_users_by_audience(audience):
         resp = await client.get(url, headers=headers, params=params)
         return resp.json()
 
-@router.message(F.text & ~F.text.in_(MENU_BUTTONS), default_state, flags={"order": 100})
+@router.message(F.text & ~F.text.in_(MENU_BUTTONS) & ~F.text.startswith("/"), default_state, flags={"order": 100})
 async def universal_ai_handler(message: types.Message, state: FSMContext):
     await mark_active(message)
     print("universal_ai_handler called")
@@ -639,9 +640,34 @@ async def universal_ai_handler(message: types.Message, state: FSMContext):
         await message.answer("Произошла ошибка при обработке запроса к ИИ. Попробуйте позже.")
         print(f"Ошибка в universal_ai_handler: {e}")
 
+@router.message(Command("help"))
+async def cmd_help(message: types.Message):
+    print("DEBUG: cmd_help called")
+    text = (
+        "ℹ️ <b>Доступные команды:</b>\n"
+        "/manager — связаться с менеджером по вопросам оплаты, подписки и другим вопросам.\n"
+        "/cancel_autopay — отключить автосписание (рекуррентную оплату). Подписка продолжит действовать до конца оплаченного периода, далее автосписания не будет.\n"
+    )
+    await message.answer(text, parse_mode="HTML")
+
+@router.message(Command("manager"))
+async def cmd_manager(message: types.Message):
+    await message.answer(f"Связаться с менеджером: {MANAGER_NICK}")
+
+@router.message(Command("cancel_autopay"))
+async def cmd_cancel_autopay(message: types.Message):
+    user = await get_user_by_telegram_id(message.from_user.id)
+    if not user or not user.get("payment_method_id"):
+        await message.answer("У вас не подключено автосписание или вы не авторизованы.")
+        return
+    await remove_payment_method_id(message.from_user.id)
+    await message.answer(
+        "Автосписание успешно отключено. Ваша подписка будет действовать до конца оплаченного периода, далее продление возможно вручную через /pay."
+    ) 
+
 @router.message()
 async def any_message_handler(message: types.Message, state: FSMContext):
-    print(f"DEBUG: message.text = '{message.text}'")
+    print(f"DEBUG: any_message_handler called, message.text = '{message.text}'")
     user = await get_user_by_telegram_id(message.from_user.id)
     if user and not user.get("is_paid"):
         pay_keyboard = InlineKeyboardMarkup(
