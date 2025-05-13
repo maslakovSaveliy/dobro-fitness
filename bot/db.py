@@ -62,7 +62,9 @@ async def update_user_profile(telegram_id: int, **fields):
             json=fields
         )
         data = resp.json()
-        return data[0] if data else None
+        if data and isinstance(data, list) and len(data) > 0:
+            return data[0]
+        return None
 
 async def add_workout(user_id: str, workout_type: str, details: str, date=None, calories_burned=None):
     from datetime import date as dt_date

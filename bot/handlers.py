@@ -38,6 +38,7 @@ class ProfileStates(StatesGroup):
     goal = State()
     level = State()
     health_issues = State()
+    location = State()
     workouts_per_week = State()
     height = State()
     weight = State()
@@ -102,8 +103,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
             await message.answer(
                 "Привет! Я фитнес-бот. Помогу тебе с тренировками, питанием и мотивацией!\n\n"
                 "Давай начнем с небольшой анкеты.\n\n"
-                "1. Какая у тебя цель? (Похудеть/Набрать массу/Поддерживать форму)",
-                reply_markup=menu
+                "1. Какая у тебя цель? (Похудеть/Набрать массу/Поддерживать форму)"
             )
             await state.set_state(ProfileStates.goal)
             return
@@ -136,20 +136,27 @@ async def process_level(message: types.Message, state: FSMContext):
 async def process_health_issues(message: types.Message, state: FSMContext):
     try:
         await state.update_data(health_issues=message.text)
-        await message.answer("4. Сколько раз в неделю хочешь тренироваться?")
-        await state.set_state(ProfileStates.workouts_per_week)
+        await message.answer("4. Где планируете заниматься? (Дома/В зале/На улице)")
+        await state.set_state(ProfileStates.location)
     except Exception as e:
         await message.answer("Произошла ошибка. Попробуйте позже.")
         print(f"Ошибка в анкете (health_issues): {e}")
 
+@router.message(ProfileStates.location)
+async def process_location(message: types.Message, state: FSMContext):
+    try:
+        await state.update_data(location=message.text)
+        await message.answer("5. Сколько раз в неделю хотите тренироваться?")
+        await state.set_state(ProfileStates.workouts_per_week)
+    except Exception as e:
+        await message.answer("Произошла ошибка. Попробуйте позже.")
+        print(f"Ошибка в анкете (location): {e}")
+
 @router.message(ProfileStates.workouts_per_week)
 async def process_workouts_per_week(message: types.Message, state: FSMContext):
     try:
-        if not is_positive_int(message.text):
-            await message.answer("Пожалуйста, введите целое положительное число (сколько раз в неделю хотите тренироваться)?")
-            return
         await state.update_data(workouts_per_week=message.text)
-        await message.answer("5. Рост (см)?")
+        await message.answer("6. Рост (см)?")
         await state.set_state(ProfileStates.height)
     except Exception as e:
         await message.answer("Произошла ошибка. Попробуйте позже.")
@@ -158,11 +165,8 @@ async def process_workouts_per_week(message: types.Message, state: FSMContext):
 @router.message(ProfileStates.height)
 async def process_height(message: types.Message, state: FSMContext):
     try:
-        if not is_positive_int(message.text):
-            await message.answer("Пожалуйста, введите целое положительное число (ваш рост в см)?")
-            return
         await state.update_data(height=message.text)
-        await message.answer("6. Вес (кг)?")
+        await message.answer("7. Вес (кг)?")
         await state.set_state(ProfileStates.weight)
     except Exception as e:
         await message.answer("Произошла ошибка. Попробуйте позже.")
@@ -171,11 +175,8 @@ async def process_height(message: types.Message, state: FSMContext):
 @router.message(ProfileStates.weight)
 async def process_weight(message: types.Message, state: FSMContext):
     try:
-        if not is_positive_int(message.text):
-            await message.answer("Пожалуйста, введите целое положительное число (ваш вес в кг)?")
-            return
         await state.update_data(weight=message.text)
-        await message.answer("7. Возраст?")
+        await message.answer("8. Возраст?")
         await state.set_state(ProfileStates.age)
     except Exception as e:
         await message.answer("Произошла ошибка. Попробуйте позже.")
@@ -184,11 +185,8 @@ async def process_weight(message: types.Message, state: FSMContext):
 @router.message(ProfileStates.age)
 async def process_age(message: types.Message, state: FSMContext):
     try:
-        if not is_positive_int(message.text):
-            await message.answer("Пожалуйста, введите целое положительное число (ваш возраст)?")
-            return
         await state.update_data(age=message.text)
-        await message.answer("8. Пол (М/Ж)?")
+        await message.answer("9. Пол (М/Ж)?")
         await state.set_state(ProfileStates.gender)
     except Exception as e:
         await message.answer("Произошла ошибка. Попробуйте позже.")
@@ -199,49 +197,104 @@ async def process_gender(message: types.Message, state: FSMContext):
     try:
         await state.update_data(gender=message.text)
         data = await state.get_data()
-        if not is_positive_int(data.get("workouts_per_week")):
-            await message.answer("Пожалуйста, введите целое положительное число (сколько раз в неделю хотите тренироваться)?")
-            await state.set_state(ProfileStates.workouts_per_week)
-            return
-        if not is_positive_int(data.get("height")):
-            await message.answer("Пожалуйста, введите целое положительное число (ваш рост в см)?")
-            await state.set_state(ProfileStates.height)
-            return
-        if not is_positive_int(data.get("weight")):
-            await message.answer("Пожалуйста, введите целое положительное число (ваш вес в кг)?")
-            await state.set_state(ProfileStates.weight)
-            return
-        if not is_positive_int(data.get("age")):
-            await message.answer("Пожалуйста, введите целое положительное число (ваш возраст)?")
-            await state.set_state(ProfileStates.age)
-            return
-        await update_user_profile(
-            telegram_id=message.from_user.id,
-            goal=data.get("goal"),
-            level=data.get("level"),
-            health_issues=data.get("health_issues"),
-            workouts_per_week=int(data.get("workouts_per_week", 0)),
-            height=int(data.get("height", 0)),
-            weight=int(data.get("weight", 0)),
-            age=int(data.get("age", 0)),
-            gender=data.get("gender"),
+        # Формируем сводку анкеты
+        summary = (
+            f"Проверь, всё ли верно:\n"
+            f"1. Цель: {data.get('goal', '')}\n"
+            f"2. Уровень: {data.get('level', '')}\n"
+            f"3. Ограничения: {data.get('health_issues', '')}\n"
+            f"4. Где планируешь заниматься: {data.get('location', '')}\n"
+            f"5. Сколько раз в неделю: {data.get('workouts_per_week', '')}\n"
+            f"6. Рост: {data.get('height', '')}\n"
+            f"7. Вес: {data.get('weight', '')}\n"
+            f"8. Возраст: {data.get('age', '')}\n"
+            f"9. Пол: {data.get('gender', '')}"
         )
-        user = await get_user_by_telegram_id(message.from_user.id)
-        workout_text = await generate_workout_via_ai(user)
-        await add_workout(
-            user_id=user["id"],
-            workout_type="free_trial",
-            details=workout_text
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="✅ Всё верно", callback_data="profile_confirm")],
+                [InlineKeyboardButton(text="Изменить ответы", callback_data="profile_restart")],
+            ]
         )
-        await message.answer(
-            "Спасибо! Вот твоя первая бесплатная тренировка:\n\n" +
-            workout_text +
-            f"\n\nЕсли хочешь получить доступ к персональным тренировкам и другим функциям — оформи подписку! Стоимость подписки: {SUBSCRIPTION_AMOUNT}₽. /pay"
-        )
-        await state.clear()
+        await message.answer(summary, reply_markup=kb)
+        await state.set_state("profile_confirm_wait")
     except Exception as e:
         await message.answer("Произошла ошибка. Попробуйте позже.")
         print(f"Ошибка в анкете (gender): {e}")
+
+@router.callback_query(lambda c: c.data in ["profile_confirm", "profile_restart"])
+async def profile_confirm_callback(callback_query: types.CallbackQuery, state: FSMContext):
+    try:
+        current_state = await state.get_state()
+        # Если состояние уже очищено, игнорируем повторный callback
+        if not current_state or current_state != "profile_confirm_wait":
+            await callback_query.answer("Анкета уже подтверждена или сброшена.", show_alert=False)
+            return
+        data = await state.get_data()
+        if callback_query.data == "profile_confirm":
+            await update_user_profile(
+                telegram_id=callback_query.from_user.id,
+                goal=data.get("goal"),
+                level=data.get("level"),
+                health_issues=data.get("health_issues"),
+                location=data.get("location"),
+                workouts_per_week=data.get("workouts_per_week"),
+                height=data.get("height"),
+                weight=data.get("weight"),
+                age=data.get("age"),
+                gender=data.get("gender"),
+            )
+            user = await get_user_by_telegram_id(callback_query.from_user.id)
+            # Удаляем сообщение с кнопками, чтобы нельзя было кликнуть повторно
+            try:
+                await callback_query.message.delete()
+            except Exception as e:
+                print(f"Не удалось удалить сообщение с кнопками: {e}")
+            await state.clear()
+            # Сообщение о генерации плана
+            if user.get("is_paid"):
+                wait_msg = await callback_query.message.answer("Профиль подтверждён! Генерирую персональный план, пожалуйста, подождите...")
+            else:
+                wait_msg = await callback_query.message.answer("Профиль подтверждён! Генерирую бесплатную тренировку, пожалуйста, подождите...")
+            workout_text = await generate_workout_via_ai(user)
+            # Проверяем статус оплаты
+            if user.get("is_paid"):
+                await add_workout(
+                    user_id=user["id"],
+                    workout_type="personal",
+                    details=workout_text
+                )
+                await callback_query.message.answer(
+                    "Профиль обновлён! Вот твой новый персональный план:\n\n" +
+                    workout_text
+                )
+            else:
+                await add_workout(
+                    user_id=user["id"],
+                    workout_type="free_trial",
+                    details=workout_text
+                )
+                await callback_query.message.answer(
+                    "Спасибо! Вот твоя первая бесплатная тренировка:\n\n" +
+                    workout_text +
+                    f"\n\nЕсли хочешь получить доступ к персональным тренировкам и другим функциям — оформи подписку! Стоимость подписки: {SUBSCRIPTION_AMOUNT}₽. /pay"
+                )
+            menu = await get_main_menu(callback_query.from_user.id)
+            await callback_query.message.answer("Меню доступно ниже 👇", reply_markup=menu)
+        else:
+            try:
+                await callback_query.message.delete()
+            except Exception as e:
+                print(f"Не удалось удалить сообщение с кнопками: {e}")
+            await state.clear()
+            await callback_query.message.answer(
+                "Давай начнем заново!\n\n1. Какая у тебя цель? (Похудеть/Набрать массу/Поддерживать форму)"
+            )
+            await state.set_state(ProfileStates.goal)
+        await callback_query.answer()
+    except Exception as e:
+        await callback_query.answer("Произошла ошибка при обработке анкеты.", show_alert=True)
+        print(f"Ошибка в profile_confirm_callback: {e}")
 
 @router.message(Command("pay"))
 async def cmd_pay(message: types.Message):
@@ -282,16 +335,24 @@ async def process_pay_link(callback_query: types.CallbackQuery):
 
 @router.message(F.text == "Получить новую тренировку")
 async def get_new_workout(message: types.Message, state: FSMContext):
+    # Проверка на занятость
+    data = await state.get_data()
+    if data.get("is_busy"):
+        await message.answer("Генерация уже выполняется, подождите...")
+        return
+    await state.update_data(is_busy=True)
     await state.clear()
     await mark_active(message)
+    # Сразу даём отклик пользователю
+    await message.answer("Команда принята, обрабатываю...")
     try:
         user = await get_user_by_telegram_id(message.from_user.id)
         if not await require_payment(message, user):
+            await state.update_data(is_busy=False)
             return
-        await message.answer("Команда принята, обрабатываю...")
         workout_text = await generate_workout_via_ai(user)
         # Сохраняем тренировку и историю в FSMContext
-        await state.update_data(workout_text=workout_text, workout_history=[{"role": "user", "content": "Запрос тренировки"}, {"role": "assistant", "content": workout_text}])
+        await state.update_data(workout_text=workout_text, workout_history=[{"role": "user", "content": "Запрос тренировки"}, {"role": "assistant", "content": workout_text}], is_busy=False)
         # Кнопки
         kb = InlineKeyboardMarkup(
             inline_keyboard=[
@@ -299,10 +360,17 @@ async def get_new_workout(message: types.Message, state: FSMContext):
                 [InlineKeyboardButton(text="Изменить тренировку", callback_data="workout_change")],
             ]
         )
+        # Сохраняем тренировку с типом personal
+        await add_workout(
+            user_id=user["id"],
+            workout_type="personal",
+            details=workout_text
+        )
         await message.answer(workout_text, reply_markup=kb)
     except Exception as e:
         await message.answer("Произошла ошибка при получении тренировки. Попробуйте позже.")
         print(f"Ошибка в get_new_workout: {e}")
+        await state.update_data(is_busy=False)
 
 @router.callback_query(lambda c: c.data == "workout_done")
 async def workout_done_callback(callback_query: types.CallbackQuery, state: FSMContext):
@@ -323,49 +391,73 @@ async def workout_done_callback(callback_query: types.CallbackQuery, state: FSMC
 
 @router.callback_query(lambda c: c.data == "workout_change")
 async def workout_change_callback(callback_query: types.CallbackQuery, state: FSMContext):
-    data = await state.get_data()
-    user = await get_user_by_telegram_id(callback_query.from_user.id)
-    workout_history = data.get("workout_history", [])
-    # Добавляем сообщение пользователя о недовольстве
-    workout_history.append({"role": "user", "content": "Не нравится, давай другую тренировку."})
-    # Уведомляем пользователя о начале генерации
-    wait_msg = await callback_query.message.answer("Запрос принят, генерирую новую тренировку. Пожалуйста, подождите...")
-    # Формируем промпт для новой тренировки с историей
-    new_workout_text = await generate_workout_via_ai_with_history(user, workout_history)
-    # Обновляем историю
-    workout_history.append({"role": "assistant", "content": new_workout_text})
-    await state.update_data(workout_text=new_workout_text, workout_history=workout_history)
-    kb = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="Выполнил", callback_data="workout_done")],
-            [InlineKeyboardButton(text="Изменить тренировку", callback_data="workout_change")],
-        ]
-    )
-    # Удаляем старое сообщение с кнопками
-    await callback_query.message.delete()
-    # Удаляем уведомление о генерации
-    await wait_msg.delete()
-    # Отправляем новую тренировку с кнопками
-    await callback_query.message.answer(new_workout_text, reply_markup=kb)
     await callback_query.answer()
+    data = await state.get_data()
+    if data.get("is_busy"):
+        await callback_query.message.answer("Генерация уже выполняется, подождите...")
+        return
+    await state.update_data(is_busy=True)
+    # Системное сообщение сразу
+    wait_msg = await callback_query.message.answer("Запрос принят, генерирую новую тренировку. Пожалуйста, подождите...")
+    try:
+        user = await get_user_by_telegram_id(callback_query.from_user.id)
+        workout_history = data.get("workout_history", [])
+        # Добавляем сообщение пользователя о недовольстве
+        workout_history.append({"role": "user", "content": "Не нравится, давай другую тренировку."})
+        # Формируем промпт для новой тренировки с историей
+        new_workout_text = await generate_workout_via_ai_with_history(user, workout_history)
+        # Обновляем историю
+        workout_history.append({"role": "assistant", "content": new_workout_text})
+        await state.update_data(workout_text=new_workout_text, workout_history=workout_history, is_busy=False)
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="Выполнил", callback_data="workout_done")],
+                [InlineKeyboardButton(text="Изменить тренировку", callback_data="workout_change")],
+            ]
+        )
+        # Удаляем старое сообщение с кнопками
+        await callback_query.message.delete()
+        # Удаляем уведомление о генерации
+        await wait_msg.delete()
+        # Отправляем новую тренировку с кнопками
+        await callback_query.message.answer(new_workout_text, reply_markup=kb)
+    except Exception as e:
+        await callback_query.message.answer("Произошла ошибка при генерации новой тренировки. Попробуйте позже.")
+        print(f"Ошибка в workout_change_callback: {e}")
+        await state.update_data(is_busy=False)
 
 @router.message(F.text == "Подсчет калорий")
 async def start_calories(message: types.Message, state: FSMContext):
+    # Проверка на занятость
+    data = await state.get_data()
+    if data.get("is_busy"):
+        await message.answer("Анализ уже выполняется, подождите...")
+        return
+    await state.update_data(is_busy=True)
     await state.clear()
     await mark_active(message)
     try:
         user = await get_user_by_telegram_id(message.from_user.id)
         if not await require_payment(message, user):
+            await state.update_data(is_busy=False)
             return
         await message.answer("Команда принята, обрабатываю...")
         await message.answer("Пожалуйста, отправь фото еды.")
         await state.set_state(CaloriesStates.waiting_for_photo)
+        await state.update_data(is_busy=False)
     except Exception as e:
         await message.answer("Произошла ошибка при запуске сценария подсчета калорий. Попробуйте позже.")
         print(f"Ошибка в start_calories: {e}")
+        await state.update_data(is_busy=False)
 
 @router.message(CaloriesStates.waiting_for_photo, F.photo)
 async def process_calories_photo(message: types.Message, state: FSMContext):
+    # Проверка на занятость
+    data = await state.get_data()
+    if data.get("is_busy"):
+        await message.answer("Анализ уже выполняется, подождите...")
+        return
+    await state.update_data(is_busy=True)
     await mark_active(message)
     try:
         await message.answer("Команда принята, анализирую фото...")
@@ -393,6 +485,8 @@ async def process_calories_photo(message: types.Message, state: FSMContext):
     except Exception as e:
         await message.answer("Произошла ошибка при обработке фото. Попробуйте позже.")
         print(f"Ошибка в process_calories_photo: {e}")
+    finally:
+        await state.update_data(is_busy=False)
 
 @router.message(CaloriesStates.waiting_for_photo)
 async def process_calories_not_photo(message: types.Message, state: FSMContext):
@@ -411,12 +505,21 @@ async def process_calories_not_photo(message: types.Message, state: FSMContext):
 @router.message(F.text == "История")
 async def show_history(message: types.Message, state: FSMContext):
     print("DEBUG: show_history called, state cleared")
+    # Проверка на занятость
+    data = await state.get_data()
+    if data.get("is_busy"):
+        await message.answer("История уже формируется, подождите...")
+        return
+    await state.update_data(is_busy=True)
+    # Системное сообщение сразу
+    await message.answer("Формирую историю, пожалуйста, подождите...")
     await state.clear()
     await mark_active(message)
     menu = await get_main_menu(message.from_user.id)
     try:
         user = await get_user_by_telegram_id(message.from_user.id)
         if not await require_payment(message, user):
+            await state.update_data(is_busy=False)
             return
         print("DEBUG: show_history - user and payment ok")
         workouts = await get_user_workouts(user["id"])
@@ -501,7 +604,9 @@ async def show_history(message: types.Message, state: FSMContext):
     except Exception as e:
         await message.answer("Произошла ошибка при формировании Excel-файла. Попробуйте позже.", reply_markup=menu)
         print(f"Ошибка в show_history: {e}")
-        
+    finally:
+        await state.update_data(is_busy=False)
+
 @router.message(F.text == "Пуш-рассылка")
 async def push_start(message: types.Message, state: FSMContext):
     if not await is_admin(message.from_user.id):
@@ -552,27 +657,37 @@ async def push_cancel(callback_query: types.CallbackQuery, state: FSMContext):
 @router.callback_query(lambda c: c.data == "push_confirm")
 async def push_confirm(callback_query: types.CallbackQuery, state: FSMContext):
     data = await state.get_data()
+    if data.get("is_busy"):
+        await callback_query.answer("Рассылка уже выполняется, подождите...", show_alert=True)
+        return
+    await state.update_data(is_busy=True)
     text = data.get("push_text", "")
     audience = data.get("push_audience", "all")
     await callback_query.message.answer("Рассылка начата...")
     await state.clear()
     # Получаем пользователей
-    if audience == "all":
-        users = await get_users_by_audience(None)
-    else:
-        users = await get_users_by_audience(audience)
-    count = 0
-    errors = 0
-    from aiogram import Bot
-    bot = callback_query.bot
-    for user in users:
-        try:
-            await bot.send_message(user["telegram_id"], text)
-            count += 1
-        except Exception as e:
-            errors += 1
-            print(f"Ошибка отправки {user.get('telegram_id')}: {e}")
-    await callback_query.message.answer(f"Рассылка завершена. Успешно: {count}, ошибок: {errors}")
+    try:
+        if audience == "all":
+            users = await get_users_by_audience(None)
+        else:
+            users = await get_users_by_audience(audience)
+        count = 0
+        errors = 0
+        from aiogram import Bot
+        bot = callback_query.bot
+        for user in users:
+            try:
+                await bot.send_message(user["telegram_id"], text)
+                count += 1
+            except Exception as e:
+                errors += 1
+                print(f"Ошибка отправки {user.get('telegram_id')}: {e}")
+        await callback_query.message.answer(f"Рассылка завершена. Успешно: {count}, ошибок: {errors}")
+    except Exception as e:
+        await callback_query.message.answer("Произошла ошибка при рассылке.")
+        print(f"Ошибка в push_confirm: {e}")
+    finally:
+        await state.update_data(is_busy=False)
     await callback_query.answer()
 
 @router.message(PushStates.waiting_for_audience)
@@ -602,15 +717,68 @@ async def get_users_by_audience(audience):
         resp = await client.get(url, headers=headers, params=params)
         return resp.json()
 
+@router.message(Command("reset"))
+async def cmd_reset(message: types.Message, state: FSMContext):
+    try:
+        # Сбросить только анкетные поля пользователя (goal, level, health_issues, location, workouts_per_week, height, weight, age, gender)
+        await update_user_profile(
+            telegram_id=message.from_user.id,
+            goal=None,
+            level=None,
+            health_issues=None,
+            location=None,
+            workouts_per_week=None,
+            height=None,
+            weight=None,
+            age=None,
+            gender=None,
+        )
+        await state.clear()
+        await message.answer(
+            "Анкета сброшена. Давай начнем заново!\n\n1. Какая у тебя цель? (Похудеть/Набрать массу/Поддерживать форму)"
+        )
+        await state.set_state(ProfileStates.goal)
+    except Exception as e:
+        await message.answer(f"Произошла ошибка при сбросе анкеты: {e}")
+        print(f"Ошибка в /reset: {repr(e)}")
+
+@router.message(Command("manager"))
+async def cmd_manager(message: types.Message):
+    await message.answer(f"По всем вопросам обращайтесь к менеджеру: {MANAGER_NICK}")
+    
+@router.message(Command("help"), flags={"order": 0})
+async def cmd_help(message: types.Message):
+    print("DEBUG: cmd_help called", message.text, message.entities)
+    text = (
+        "ℹ️ <b>Доступные команды:</b>\n"
+        "/manager — связаться с менеджером по вопросам оплаты, подписки и другим вопросам.\n"
+        "/cancel_autopay — отключить автосписание (рекуррентную оплату). Подписка продолжит действовать до конца оплаченного периода, далее автосписания не будет.\n"
+        "/reset — сбросить анкету и пройти опрос заново.\n"
+        "/pay — оплатить подписку.\n"
+        "/help — показать это сообщение.\n"
+    )
+    await message.answer(text, parse_mode="HTML") 
+
+@router.message(Command("cancel_autopay"))
+async def cmd_cancel_autopay(message: types.Message):
+    user = await get_user_by_telegram_id(message.from_user.id)
+    if not user or not user.get("payment_method_id"):
+        await message.answer("У вас не подключено автосписание или вы не авторизованы.")
+        return
+    await remove_payment_method_id(message.from_user.id)
+    await message.answer(
+        "Автосписание успешно отключено. Ваша подписка будет действовать до конца оплаченного периода, далее продление возможно вручную через /pay."
+    )
+
 @router.message(F.text & ~F.text.in_(MENU_BUTTONS) & ~F.text.startswith("/"), default_state, flags={"order": 100})
 async def universal_ai_handler(message: types.Message, state: FSMContext):
+    await message.answer("Команда принята, думаю...")
     await mark_active(message)
     print("universal_ai_handler called")
     try:
         user = await get_user_by_telegram_id(message.from_user.id)
         if not await require_payment(message, user):
             return
-        await message.answer("Команда принята, думаю...")
         gpt_response = await ask_gpt("", message.text)
         # Пытаемся найти JSON в ответе
         json_start = gpt_response.find('{')
@@ -640,35 +808,11 @@ async def universal_ai_handler(message: types.Message, state: FSMContext):
         await message.answer("Произошла ошибка при обработке запроса к ИИ. Попробуйте позже.")
         print(f"Ошибка в universal_ai_handler: {e}")
 
-@router.message(Command("help"))
-async def cmd_help(message: types.Message):
-    print("DEBUG: cmd_help called")
-    text = (
-        "ℹ️ <b>Доступные команды:</b>\n"
-        "/manager — связаться с менеджером по вопросам оплаты, подписки и другим вопросам.\n"
-        "/cancel_autopay — отключить автосписание (рекуррентную оплату). Подписка продолжит действовать до конца оплаченного периода, далее автосписания не будет.\n"
-    )
-    await message.answer(text, parse_mode="HTML")
-
-@router.message(Command("manager"))
-async def cmd_manager(message: types.Message):
-    await message.answer(f"Связаться с менеджером: {MANAGER_NICK}")
-
-@router.message(Command("cancel_autopay"))
-async def cmd_cancel_autopay(message: types.Message):
-    user = await get_user_by_telegram_id(message.from_user.id)
-    if not user or not user.get("payment_method_id"):
-        await message.answer("У вас не подключено автосписание или вы не авторизованы.")
-        return
-    await remove_payment_method_id(message.from_user.id)
-    await message.answer(
-        "Автосписание успешно отключено. Ваша подписка будет действовать до конца оплаченного периода, далее продление возможно вручную через /pay."
-    ) 
-
 @router.message()
 async def any_message_handler(message: types.Message, state: FSMContext):
     print(f"DEBUG: any_message_handler called, message.text = '{message.text}'")
     user = await get_user_by_telegram_id(message.from_user.id)
+    menu = await get_main_menu(message.from_user.id)
     if user and not user.get("is_paid"):
         pay_keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
@@ -679,10 +823,12 @@ async def any_message_handler(message: types.Message, state: FSMContext):
             f"Чтобы получить доступ к персональным тренировкам и другим функциям, оплати подписку. Стоимость подписки: {SUBSCRIPTION_AMOUNT}₽. После оплаты напиши администратору или дождись подтверждения.",
             reply_markup=pay_keyboard
         )
+        # Также показываем меню
+        await message.answer("Меню доступно ниже 👇", reply_markup=menu)
         return
     if message.text in MENU_BUTTONS:
         return
-    await message.answer("Используй команды для работы с ботом.")
+    await message.answer("Используй команды для работы с ботом.", reply_markup=menu)
 
 
 # Модифицируем MAIN_MENU для админа
@@ -698,4 +844,4 @@ async def get_main_menu(telegram_id):
             resize_keyboard=True
         )
     else:
-        return MAIN_MENU 
+        return MAIN_MENU
