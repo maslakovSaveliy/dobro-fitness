@@ -475,7 +475,12 @@ async def process_calories_photo(message: types.Message, state: FSMContext):
             try:
                 data = json.loads(gpt_response[json_start:json_end+1])
                 await add_meal(user_id=user["id"], description=data.get("description", "Фото еды"), calories=data.get("calories"))
-                await message.answer(f"Описание: {data.get('description', '')}\nКалории: {data.get('calories', '')}", reply_markup=MAIN_MENU)
+                await message.answer(
+                    f"Описание: {data.get('description', '')}\n"
+                    f"Калории: {data.get('calories', '')}\n"
+                    f"Б: {data.get('proteins', '—')} г, Ж: {data.get('fats', '—')} г, У: {data.get('carbs', '—')} г",
+                    reply_markup=MAIN_MENU
+                )
             except Exception as e:
                 await message.answer("Ошибка при разборе ответа ИИ. Попробуйте позже.")
                 print(f"Ошибка парсинга JSON из Vision: {e}")
@@ -789,7 +794,10 @@ async def universal_ai_handler(message: types.Message, state: FSMContext):
                 data = json.loads(gpt_response[json_start:json_end+1])
                 if data.get("type") == "meal":
                     await add_meal(user_id=user["id"], description=data.get("description", ""), calories=data.get("calories"))
-                    await message.answer("Записал приём пищи: {} ({} ккал)".format(data.get("description", ""), data.get("calories", "")))
+                    await message.answer(
+                        f"Записал приём пищи: {data.get('description', '')} ({data.get('calories', '')} ккал)\n"
+                        f"Б: {data.get('proteins', '—')} г, Ж: {data.get('fats', '—')} г, У: {data.get('carbs', '—')} г"
+                    )
                     saved = True
                 elif data.get("type") == "workout":
                     await add_workout(user_id=user["id"], workout_type=data.get("workout_type", "custom"), details=data.get("description", ""), calories_burned=data.get("calories_burned"))
