@@ -249,7 +249,7 @@ async def profile_confirm_callback(callback_query: types.CallbackQuery, state: F
             try:
                 await callback_query.message.delete()
             except Exception as e:
-                print(f"Не удалось удалить сообщение с кнопками: {e}")
+                print(f"Ошибка при удалении сообщения: {e}")
             await state.clear()
             # Сообщение о генерации плана
             if user.get("is_paid"):
@@ -285,7 +285,7 @@ async def profile_confirm_callback(callback_query: types.CallbackQuery, state: F
             try:
                 await callback_query.message.delete()
             except Exception as e:
-                print(f"Не удалось удалить сообщение с кнопками: {e}")
+                print(f"Ошибка при удалении сообщения: {e}")
             await state.clear()
             await callback_query.message.answer(
                 "Давай начнем заново!\n\n1. Какая у тебя цель? (Похудеть/Набрать массу/Поддерживать форму)"
@@ -384,7 +384,10 @@ async def workout_done_callback(callback_query: types.CallbackQuery, state: FSMC
         details=workout_text
     )
     # Удаляем сообщение с кнопками
-    await callback_query.message.delete()
+    try:
+        await callback_query.message.delete()
+    except Exception as e:
+        print(f"Ошибка при удалении сообщения: {e}")
     await callback_query.message.answer("Молодец, так держать!", reply_markup=MAIN_MENU)
     await state.clear()
     await callback_query.answer()
@@ -416,9 +419,15 @@ async def workout_change_callback(callback_query: types.CallbackQuery, state: FS
             ]
         )
         # Удаляем старое сообщение с кнопками
-        await callback_query.message.delete()
+        try:
+            await callback_query.message.delete()
+        except Exception as e:
+            print(f"Ошибка при удалении сообщения: {e}")
         # Удаляем уведомление о генерации
-        await wait_msg.delete()
+        try:
+            await wait_msg.delete()
+        except Exception as e:
+            print(f"Ошибка при удалении сообщения: {e}")
         # Отправляем новую тренировку с кнопками
         await callback_query.message.answer(new_workout_text, reply_markup=kb)
     except Exception as e:

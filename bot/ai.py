@@ -4,6 +4,7 @@ import asyncio
 from openai import AsyncOpenAI
 from .db import get_user_workouts
 import re
+import random
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 openai.api_key = OPENAI_API_KEY
@@ -30,6 +31,7 @@ async def ask_gpt(prompt, user_message):
     return response.choices[0].message.content
 
 async def generate_workout_via_ai(user):
+    n = random.randint(5, 8)
     # Получаем последние 2-3 тренировки пользователя
     workouts = await get_user_workouts(user["id"], limit=3)
     last_exercises = []
@@ -69,7 +71,7 @@ async def generate_workout_via_ai(user):
         f"{history_prompt}\n"
         f"{used_prompt}\n"
         f"Не используй ни одно упражнение из списка последних тренировок, даже базовые: {used_exercises_str}. Составь тренировку только из новых упражнений. Сделай тренировку максимально разнообразной и сбалансированной по группам мышц.\n"
-        f"В тренировке должно быть случайное количество упражнений от 5 до 8 (выбирай каждый раз разное). Последнее упражнение всегда должно быть кардио или заминка.\n"
+        f"Сгенерируй ровно {n} упражнений (последнее — кардио или заминка).\n"
         f"Для каждого упражнения обязательно указывай вес (даже если это собственный вес — пиши явно). После плана тренировки выдай отдельным абзацем совет по питанию на сегодня с обязательным указанием БЖУ (белки, жиры, углеводы).\n"
         f"Форматируй ответ строго так:\n"
         f"План тренировки на сегодня\n\n"
@@ -91,11 +93,12 @@ async def generate_workout_via_ai(user):
             {"role": "user", "content": prompt}
         ],
         temperature=0.4,
-        max_tokens=700
+        max_tokens=1200
     )
     return response.choices[0].message.content
 
 async def generate_workout_via_ai_with_history(user, history):
+    n = random.randint(5, 8)
     # Извлекаем историю упражнений из последних тренировок для промпта
     workouts = await get_user_workouts(user["id"], limit=3)
     last_exercises = []
@@ -135,7 +138,7 @@ async def generate_workout_via_ai_with_history(user, history):
         f"{history_prompt}\n"
         f"{used_prompt}\n"
         f"Не используй ни одно упражнение из списка последних тренировок, даже базовые: {used_exercises_str}. Составь тренировку только из новых упражнений. Сделай тренировку максимально разнообразной и сбалансированной по группам мышц.\n"
-        f"В тренировке должно быть случайное количество упражнений от 5 до 8 (выбирай каждый раз разное). Последнее упражнение всегда должно быть кардио или заминка.\n"
+        f"Сгенерируй ровно {n} упражнений (последнее — кардио или заминка).\n"
         f"Для каждого упражнения обязательно указывай вес (даже если это собственный вес — пиши явно). После плана тренировки выдай отдельным абзацем совет по питанию на сегодня с обязательным указанием БЖУ (белки, жиры, углеводы).\n"
         f"Форматируй ответ строго так:\n"
         f"План тренировки на сегодня\n\n"
@@ -151,7 +154,7 @@ async def generate_workout_via_ai_with_history(user, history):
         model="gpt-4o",
         messages=messages,
         temperature=0.4,
-        max_tokens=700
+        max_tokens=1200
     )
     return response.choices[0].message.content
 
