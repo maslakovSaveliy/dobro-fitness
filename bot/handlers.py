@@ -99,6 +99,15 @@ async def cmd_start(message: types.Message, state: FSMContext):
                 username=message.from_user.username,
                 first_name=message.from_user.first_name,
                 last_name=message.from_user.last_name,
+                goal=None,
+                level=None,
+                health_issues=None,
+                location=None,
+                workouts_per_week=None,
+                height=None,
+                weight=None,
+                age=None,
+                gender=None
             )
             await message.answer(
                 "Привет! Я фитнес-бот. Помогу тебе с тренировками, питанием и мотивацией!\n\n"

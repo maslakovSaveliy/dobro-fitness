@@ -32,7 +32,9 @@ async def get_user_by_telegram_id(telegram_id: int):
             return data
         return None
 
-async def create_user(telegram_id: int, username: str = None, first_name: str = None, last_name: str = None):
+async def create_user(telegram_id: int, username: str = None, first_name: str = None, last_name: str = None,
+                     goal=None, level=None, health_issues=None, location=None, workouts_per_week=None,
+                     height=None, weight=None, age=None, gender=None):
     user = await get_user_by_telegram_id(telegram_id)
     if user:
         return user
@@ -41,6 +43,15 @@ async def create_user(telegram_id: int, username: str = None, first_name: str = 
         "username": username,
         "first_name": first_name,
         "last_name": last_name,
+        "goal": goal,
+        "level": level,
+        "health_issues": health_issues,
+        "location": location,
+        "workouts_per_week": workouts_per_week,
+        "height": height,
+        "weight": weight,
+        "age": age,
+        "gender": gender,
     }]
     async with httpx.AsyncClient() as client:
         resp = await client.post(
