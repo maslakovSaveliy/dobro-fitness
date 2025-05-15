@@ -125,6 +125,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
 async def process_goal(message: types.Message, state: FSMContext):
     try:
         await state.update_data(goal=message.text)
+        print(f"DEBUG FSMContext after goal: {await state.get_data()}")
         await message.answer("2. Какой у тебя уровень подготовки? (Новичок/Средний/Продвинутый)")
         await state.set_state(ProfileStates.level)
     except Exception as e:
@@ -135,6 +136,7 @@ async def process_goal(message: types.Message, state: FSMContext):
 async def process_level(message: types.Message, state: FSMContext):
     try:
         await state.update_data(level=message.text)
+        print(f"DEBUG FSMContext after level: {await state.get_data()}")
         await message.answer("3. Есть ли ограничения по здоровью?")
         await state.set_state(ProfileStates.health_issues)
     except Exception as e:
@@ -145,6 +147,7 @@ async def process_level(message: types.Message, state: FSMContext):
 async def process_health_issues(message: types.Message, state: FSMContext):
     try:
         await state.update_data(health_issues=message.text)
+        print(f"DEBUG FSMContext after health_issues: {await state.get_data()}")
         await message.answer("4. Где планируете заниматься? (Дома/В зале/На улице)")
         await state.set_state(ProfileStates.location)
     except Exception as e:
@@ -155,6 +158,7 @@ async def process_health_issues(message: types.Message, state: FSMContext):
 async def process_location(message: types.Message, state: FSMContext):
     try:
         await state.update_data(location=message.text)
+        print(f"DEBUG FSMContext after location: {await state.get_data()}")
         await message.answer("5. Сколько раз в неделю хотите тренироваться?")
         await state.set_state(ProfileStates.workouts_per_week)
     except Exception as e:
@@ -165,6 +169,7 @@ async def process_location(message: types.Message, state: FSMContext):
 async def process_workouts_per_week(message: types.Message, state: FSMContext):
     try:
         await state.update_data(workouts_per_week=message.text)
+        print(f"DEBUG FSMContext after workouts_per_week: {await state.get_data()}")
         await message.answer("6. Рост (см)?")
         await state.set_state(ProfileStates.height)
     except Exception as e:
@@ -175,6 +180,7 @@ async def process_workouts_per_week(message: types.Message, state: FSMContext):
 async def process_height(message: types.Message, state: FSMContext):
     try:
         await state.update_data(height=message.text)
+        print(f"DEBUG FSMContext after height: {await state.get_data()}")
         await message.answer("7. Вес (кг)?")
         await state.set_state(ProfileStates.weight)
     except Exception as e:
@@ -185,6 +191,7 @@ async def process_height(message: types.Message, state: FSMContext):
 async def process_weight(message: types.Message, state: FSMContext):
     try:
         await state.update_data(weight=message.text)
+        print(f"DEBUG FSMContext after weight: {await state.get_data()}")
         await message.answer("8. Возраст?")
         await state.set_state(ProfileStates.age)
     except Exception as e:
@@ -195,6 +202,7 @@ async def process_weight(message: types.Message, state: FSMContext):
 async def process_age(message: types.Message, state: FSMContext):
     try:
         await state.update_data(age=message.text)
+        print(f"DEBUG FSMContext after age: {await state.get_data()}")
         await message.answer("9. Пол (М/Ж)?")
         await state.set_state(ProfileStates.gender)
     except Exception as e:
@@ -205,6 +213,7 @@ async def process_age(message: types.Message, state: FSMContext):
 async def process_gender(message: types.Message, state: FSMContext):
     try:
         await state.update_data(gender=message.text)
+        print(f"DEBUG FSMContext after gender: {await state.get_data()}")
         data = await state.get_data()
         # Формируем сводку анкеты
         summary = (
@@ -240,6 +249,7 @@ async def profile_confirm_callback(callback_query: types.CallbackQuery, state: F
             await callback_query.answer("Анкета уже подтверждена или сброшена.", show_alert=False)
             return
         data = await state.get_data()
+        print(f"DEBUG profile_confirm_callback FSMContext: {data}")
         if callback_query.data == "profile_confirm":
             await update_user_profile(
                 telegram_id=callback_query.from_user.id,
@@ -297,15 +307,12 @@ async def profile_confirm_callback(callback_query: types.CallbackQuery, state: F
             menu = await get_main_menu(callback_query.from_user.id)
             await callback_query.message.answer("Меню доступно ниже 👇", reply_markup=menu)
         else:
-            try:
-                await callback_query.message.delete()
-            except Exception as e:
-                print(f"Ошибка при удалении сообщения: {e}")
+            # Полностью очищаем FSMContext перед повторным прохождением анкеты
             await state.clear()
+            await state.set_state(ProfileStates.goal)
             await callback_query.message.answer(
                 "Давай начнем заново!\n\n1. Какая у тебя цель? (Похудеть/Набрать массу/Поддерживать форму)"
             )
-            await state.set_state(ProfileStates.goal)
         await callback_query.answer()
     except Exception as e:
         await callback_query.answer("Произошла ошибка при обработке анкеты.", show_alert=True)
