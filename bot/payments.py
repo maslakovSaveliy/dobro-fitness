@@ -22,7 +22,7 @@ async def create_payment_link(amount=None, description=None, return_url=None, me
             "type": "redirect",
             "return_url": return_url
         },
-        "save_payment_method": False, #  make True
+        "save_payment_method": True,
         "capture": True,
         "description": description,
         "metadata": metadata or {"order_id": str(uuid.uuid4())},
