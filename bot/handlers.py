@@ -483,7 +483,14 @@ async def process_calories_photo(message: types.Message, state: FSMContext):
         if json_start != -1 and json_end != -1 and json_end > json_start:
             try:
                 data = json.loads(gpt_response[json_start:json_end+1])
-                await add_meal(user_id=user["id"], description=data.get("description", "Фото еды"), calories=data.get("calories"))
+                await add_meal(
+                    user_id=user["id"],
+                    description=data.get("description", "Фото еды"),
+                    calories=data.get("calories"),
+                    proteins=data.get("proteins"),
+                    fats=data.get("fats"),
+                    carbs=data.get("carbs")
+                )
                 await message.answer(
                     f"Описание: {data.get('description', '')}\n"
                     f"Калории: {data.get('calories', '')}\n"
@@ -579,7 +586,7 @@ async def show_history(message: types.Message, state: FSMContext):
                     pass
             ws1.column_dimensions[col_letter].width = max(12, min(max_length + 2, 50))
         ws2 = wb.create_sheet(title="Питание")
-        ws2.append(["Дата", "Описание", "Калории"])
+        ws2.append(["Дата", "Описание", "Калории", "Белки (г)", "Жиры (г)", "Углеводы (г)"])
         for cell in ws2[1]:
             cell.font = header_font
             cell.alignment = align_left
@@ -588,7 +595,10 @@ async def show_history(message: types.Message, state: FSMContext):
             ws2.append([
                 m.get("date", ""),
                 m.get("description", ""),
-                m.get("calories", "")
+                m.get("calories", ""),
+                m.get("proteins", ""),
+                m.get("fats", ""),
+                m.get("carbs", "")
             ])
         for row in ws2.iter_rows(min_row=2, max_row=ws2.max_row):
             for cell in row:
@@ -802,7 +812,14 @@ async def universal_ai_handler(message: types.Message, state: FSMContext):
             try:
                 data = json.loads(gpt_response[json_start:json_end+1])
                 if data.get("type") == "meal":
-                    await add_meal(user_id=user["id"], description=data.get("description", ""), calories=data.get("calories"))
+                    await add_meal(
+                        user_id=user["id"],
+                        description=data.get("description", ""),
+                        calories=data.get("calories"),
+                        proteins=data.get("proteins"),
+                        fats=data.get("fats"),
+                        carbs=data.get("carbs")
+                    )
                     await message.answer(
                         f"Записал приём пищи: {data.get('description', '')} ({data.get('calories', '')} ккал)\n"
                         f"Б: {data.get('proteins', '—')} г, Ж: {data.get('fats', '—')} г, У: {data.get('carbs', '—')} г"

@@ -114,7 +114,7 @@ async def confirm_payment(telegram_id: int, days: int = 30):
         data = resp.json()
         return data[0] if data else None
 
-async def add_meal(user_id: str, description: str, calories: int = None, date=None, photo_url=None):
+async def add_meal(user_id: str, description: str, calories: int = None, date=None, photo_url=None, proteins=None, fats=None, carbs=None):
     from datetime import date as dt_date
     if date is None:
         date = dt_date.today().isoformat()
@@ -127,6 +127,12 @@ async def add_meal(user_id: str, description: str, calories: int = None, date=No
         data["calories"] = calories
     if photo_url is not None:
         data["photo_url"] = photo_url
+    if proteins is not None:
+        data["proteins"] = proteins
+    if fats is not None:
+        data["fats"] = fats
+    if carbs is not None:
+        data["carbs"] = carbs
     async with httpx.AsyncClient() as client:
         resp = await client.post(
             f"{SUPABASE_API}/meals",
