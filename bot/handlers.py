@@ -257,6 +257,12 @@ async def profile_confirm_callback(callback_query: types.CallbackQuery, state: F
             else:
                 wait_msg = await callback_query.message.answer("Профиль подтверждён! Генерирую бесплатную тренировку, пожалуйста, подождите...")
             workout_text = await generate_workout_via_ai(user)
+            if not workout_text or not workout_text.strip():
+                await callback_query.message.answer(
+                    "Не удалось сгенерировать тренировку: описание отсутствует. Попробуйте ещё раз.",
+                    reply_markup=MAIN_MENU
+                )
+                return
             # Проверяем статус оплаты
             if user.get("is_paid"):
                 await add_workout(
@@ -351,6 +357,13 @@ async def get_new_workout(message: types.Message, state: FSMContext):
             await state.update_data(is_busy=False)
             return
         workout_text = await generate_workout_via_ai(user)
+        if not workout_text or not workout_text.strip():
+            await message.answer(
+                "Не удалось сгенерировать тренировку: описание отсутствует. Попробуйте ещё раз.",
+                reply_markup=MAIN_MENU
+            )
+            await state.update_data(is_busy=False)
+            return
         # Сохраняем тренировку и историю в FSMContext
         await state.update_data(workout_text=workout_text, workout_history=[{"role": "user", "content": "Запрос тренировки"}, {"role": "assistant", "content": workout_text}], is_busy=False)
         # Кнопки
@@ -376,6 +389,14 @@ async def get_new_workout(message: types.Message, state: FSMContext):
 async def workout_done_callback(callback_query: types.CallbackQuery, state: FSMContext):
     data = await state.get_data()
     workout_text = data.get("workout_text")
+    if not workout_text or not workout_text.strip():
+        await callback_query.message.answer(
+            "Не удалось сохранить тренировку: описание отсутствует. Пожалуйста, запроси новую тренировку и попробуй снова.",
+            reply_markup=MAIN_MENU
+        )
+        await state.clear()
+        await callback_query.answer()
+        return
     user = await get_user_by_telegram_id(callback_query.from_user.id)
     # Сохраняем только последнюю подтверждённую тренировку
     await add_workout(
@@ -483,16 +504,25 @@ async def process_calories_photo(message: types.Message, state: FSMContext):
         if json_start != -1 and json_end != -1 and json_end > json_start:
             try:
                 data = json.loads(gpt_response[json_start:json_end+1])
+                desc = data.get("description", "Фото еды")
+                if not desc or not desc.strip():
+                    await message.answer(
+                        "Не удалось сохранить приём пищи: описание отсутствует. Попробуйте ещё раз.",
+                        reply_markup=MAIN_MENU
+                    )
+                    await state.clear()
+                    await state.update_data(is_busy=False)
+                    return
                 await add_meal(
                     user_id=user["id"],
-                    description=data.get("description", "Фото еды"),
+                    description=desc,
                     calories=data.get("calories"),
                     proteins=data.get("proteins"),
                     fats=data.get("fats"),
                     carbs=data.get("carbs")
                 )
                 await message.answer(
-                    f"Описание: {data.get('description', '')}\n"
+                    f"Описание: {desc}\n"
                     f"Калории: {data.get('calories', '')}\n"
                     f"Б: {data.get('proteins', '—')} г, Ж: {data.get('fats', '—')} г, У: {data.get('carbs', '—')} г",
                     reply_markup=MAIN_MENU
@@ -812,22 +842,36 @@ async def universal_ai_handler(message: types.Message, state: FSMContext):
             try:
                 data = json.loads(gpt_response[json_start:json_end+1])
                 if data.get("type") == "meal":
+                    desc = data.get("description", "")
+                    if not desc or not desc.strip():
+                        await message.answer(
+                            "Не удалось сохранить приём пищи: описание отсутствует. Попробуйте ещё раз.",
+                            reply_markup=MAIN_MENU
+                        )
+                        return
                     await add_meal(
                         user_id=user["id"],
-                        description=data.get("description", ""),
+                        description=desc,
                         calories=data.get("calories"),
                         proteins=data.get("proteins"),
                         fats=data.get("fats"),
                         carbs=data.get("carbs")
                     )
                     await message.answer(
-                        f"Записал приём пищи: {data.get('description', '')} ({data.get('calories', '')} ккал)\n"
+                        f"Записал приём пищи: {desc} ({data.get('calories', '')} ккал)\n"
                         f"Б: {data.get('proteins', '—')} г, Ж: {data.get('fats', '—')} г, У: {data.get('carbs', '—')} г"
                     )
                     saved = True
                 elif data.get("type") == "workout":
-                    await add_workout(user_id=user["id"], workout_type=data.get("workout_type", "custom"), details=data.get("description", ""), calories_burned=data.get("calories_burned"))
-                    await message.answer("Записал тренировку: {}".format(data.get("description", "")))
+                    workout_desc = data.get("description", "")
+                    if not workout_desc or not workout_desc.strip():
+                        await message.answer(
+                            "Не удалось сохранить тренировку: описание отсутствует. Попробуйте ещё раз.",
+                            reply_markup=MAIN_MENU
+                        )
+                        return
+                    await add_workout(user_id=user["id"], workout_type=data.get("workout_type", "custom"), details=workout_desc, calories_burned=data.get("calories_burned"))
+                    await message.answer("Записал тренировку: {}".format(workout_desc))
                     saved = True
             except Exception as e:
                 print(f"Ошибка парсинга JSON из ответа GPT: {e}")
