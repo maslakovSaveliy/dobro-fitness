@@ -52,7 +52,7 @@ async def generate_workout_via_ai(user):
                 exercises.append(match.group(1).strip())
         return exercises
     for w in workouts:
-        details = w.get("details", "").strip()
+        details = (w.get("details") or "").strip()
         if details:
             exercises = extract_exercise_names(details)
             last_exercises.extend(exercises)
@@ -131,7 +131,7 @@ async def generate_workout_via_ai_with_history(user, history):
                 exercises.append(match.group(1).strip())
         return exercises
     for w in workouts:
-        details = w.get("details", "").strip()
+        details = (w.get("details") or "").strip()
         if details:
             exercises = extract_exercise_names(details)
             last_exercises.extend(exercises)
