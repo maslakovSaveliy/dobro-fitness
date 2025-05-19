@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from .db import get_users_for_renewal, update_subscription_until, deactivate_expired_subscriptions
 from .payments import charge_subscription
 import logging
+import asyncio
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 bot = Bot(token=TELEGRAM_TOKEN)
@@ -26,7 +27,8 @@ async def send_reminders():
             try:
                 await bot.send_message(user["telegram_id"], "Давно не было активности! Не забывай про тренировки и питание. Я всегда на связи 💪")
             except Exception as e:
-                print(f"Ошибка при отправке напоминания {user.get('telegram_id')}: {e}")
+                logging.warning(f"Ошибка при отправке напоминания {user.get('telegram_id')}: {e}")
+            await asyncio.sleep(0.05)  # ~20 сообщений/сек, чтобы не словить flood limit
 
 async def auto_charge_expired(bot: Bot):
     # users = await get_users_for_renewal(reminder_days=3)

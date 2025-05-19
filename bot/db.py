@@ -38,6 +38,8 @@ async def create_user(telegram_id: int, username: str = None, first_name: str = 
     user = await get_user_by_telegram_id(telegram_id)
     if user:
         return user
+    from datetime import datetime, timedelta
+    paid_until = (datetime.utcnow() + timedelta(days=14)).isoformat()
     payload = [{
         "telegram_id": telegram_id,
         "username": username,
@@ -52,6 +54,8 @@ async def create_user(telegram_id: int, username: str = None, first_name: str = 
         "weight": weight,
         "age": age,
         "gender": gender,
+        "is_paid": True,
+        "paid_until": paid_until
     }]
     async with httpx.AsyncClient() as client:
         resp = await client.post(
@@ -212,7 +216,7 @@ async def update_subscription_until(telegram_id, new_until):
         "Authorization": f"Bearer {os.getenv('SUPABASE_KEY')}",
         "Content-Type": "application/json"
     }
-    data = {"subscription_until": new_until.isoformat()}
+    data = {"paid_until": new_until.isoformat()}
     params = {"telegram_id": f"eq.{telegram_id}"}
     async with httpx.AsyncClient() as client:
         await client.patch(url, headers=headers, params=params, json=data)

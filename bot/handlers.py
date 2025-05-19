@@ -114,6 +114,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
                 "💪 Что я умею?\n"
                 "📋 Составляю индивидуальные программы тренировок по международным стандартам, подходящие под твою цель и уровень.\n"
                 "📸 Умею считать калории по фотографиям твоих блюд, чтобы ты всегда знал, что и сколько ты ешь.\n\n"
+                "🎁 Все платные функции доступны тебе бесплатно на 2 недели! После этого периода потребуется оформить подписку.\n\n"
                 "Для того чтобы я выдал первую пробную тренировку, давай пройдем короткий опрос:\n\n"
                 "1. Какая у тебя цель? (Похудеть / Набрать массу / Поддержать форму)"
             )
@@ -246,10 +247,12 @@ async def process_gender(message: types.Message, state: FSMContext):
 @router.callback_query(lambda c: c.data in ["profile_confirm", "profile_restart"])
 async def profile_confirm_callback(callback_query: types.CallbackQuery, state: FSMContext):
     try:
+        # Сразу отвечаем на callback, чтобы Telegram не ругался на долгие операции
+        await callback_query.answer()
         current_state = await state.get_state()
         # Если состояние уже очищено, игнорируем повторный callback
         if not current_state or current_state != "profile_confirm_wait":
-            await callback_query.answer("Анкета уже подтверждена или сброшена.", show_alert=False)
+            await callback_query.message.answer("Анкета уже подтверждена или сброшена.")
             return
         data = await state.get_data()
         print(f"DEBUG profile_confirm_callback FSMContext: {data}")
@@ -273,19 +276,24 @@ async def profile_confirm_callback(callback_query: types.CallbackQuery, state: F
             except Exception as e:
                 print(f"Ошибка при удалении сообщения: {e}")
             await state.clear()
-            # Сообщение о генерации плана
-            if user.get("is_paid"):
-                wait_msg = await callback_query.message.answer("Профиль подтверждён! Генерирую персональный план, пожалуйста, подождите...")
-            else:
-                wait_msg = await callback_query.message.answer("Профиль подтверждён! Генерирую бесплатную тренировку, пожалуйста, подождите...")
+            # UX: показываем сообщение об ожидании
+            wait_msg = await callback_query.message.answer("Обрабатываю, пожалуйста, подождите...")
             workout_text = await generate_workout_via_ai(user)
             if not workout_text or not workout_text.strip():
+                try:
+                    await wait_msg.delete()
+                except Exception as e:
+                    print(f"Ошибка при удалении wait_msg: {e}")
                 await callback_query.message.answer(
                     "Не удалось сгенерировать тренировку: описание отсутствует. Попробуйте ещё раз.",
                     reply_markup=MAIN_MENU
                 )
                 return
             # Проверяем статус оплаты
+            try:
+                await wait_msg.delete()
+            except Exception as e:
+                print(f"Ошибка при удалении wait_msg: {e}")
             if user.get("is_paid"):
                 await add_workout(
                     user_id=user["id"],
@@ -316,9 +324,8 @@ async def profile_confirm_callback(callback_query: types.CallbackQuery, state: F
             await callback_query.message.answer(
                 "Давай начнем заново!\n\n1. Какая у тебя цель? (Похудеть/Набрать массу/Поддерживать форму)"
             )
-        await callback_query.answer()
     except Exception as e:
-        await callback_query.answer("Произошла ошибка при обработке анкеты.", show_alert=True)
+        await callback_query.message.answer("Произошла ошибка при обработке анкеты.")
         print(f"Ошибка в profile_confirm_callback: {e}")
 
 @router.message(Command("pay"))
@@ -368,15 +375,23 @@ async def get_new_workout(message: types.Message, state: FSMContext):
     await state.update_data(is_busy=True)
     await state.clear()
     await mark_active(message)
-    # Сразу даём отклик пользователю
-    await message.answer("Команда принята, обрабатываю...")
+    # UX: показываем сообщение об ожидании
+    wait_msg = await message.answer("Обрабатываю, пожалуйста, подождите...")
     try:
         user = await get_user_by_telegram_id(message.from_user.id)
         if not await require_payment(message, user):
             await state.update_data(is_busy=False)
+            try:
+                await wait_msg.delete()
+            except Exception as e:
+                print(f"Ошибка при удалении wait_msg: {e}")
             return
         workout_text = await generate_workout_via_ai(user)
         if not workout_text or not workout_text.strip():
+            try:
+                await wait_msg.delete()
+            except Exception as e:
+                print(f"Ошибка при удалении wait_msg: {e}")
             await message.answer(
                 "Не удалось сгенерировать тренировку: описание отсутствует. Попробуйте ещё раз.",
                 reply_markup=MAIN_MENU
@@ -392,6 +407,10 @@ async def get_new_workout(message: types.Message, state: FSMContext):
                 [InlineKeyboardButton(text="Изменить тренировку", callback_data="workout_change")],
             ]
         )
+        try:
+            await wait_msg.delete()
+        except Exception as e:
+            print(f"Ошибка при удалении wait_msg: {e}")
         # Сохраняем тренировку с типом personal
         await add_workout(
             user_id=user["id"],
@@ -400,12 +419,18 @@ async def get_new_workout(message: types.Message, state: FSMContext):
         )
         await message.answer(workout_text, reply_markup=kb)
     except Exception as e:
+        try:
+            await wait_msg.delete()
+        except Exception as e2:
+            print(f"Ошибка при удалении wait_msg: {e2}")
         await message.answer("Произошла ошибка при получении тренировки. Попробуйте позже.")
         print(f"Ошибка в get_new_workout: {e}")
         await state.update_data(is_busy=False)
 
 @router.callback_query(lambda c: c.data == "workout_done")
 async def workout_done_callback(callback_query: types.CallbackQuery, state: FSMContext):
+    # Сразу отвечаем на callback, чтобы Telegram не ругался на долгие операции
+    await callback_query.answer()
     data = await state.get_data()
     workout_text = data.get("workout_text")
     if not workout_text or not workout_text.strip():
@@ -414,7 +439,6 @@ async def workout_done_callback(callback_query: types.CallbackQuery, state: FSMC
             reply_markup=MAIN_MENU
         )
         await state.clear()
-        await callback_query.answer()
         return
     user = await get_user_by_telegram_id(callback_query.from_user.id)
     # Сохраняем только последнюю подтверждённую тренировку
@@ -430,7 +454,6 @@ async def workout_done_callback(callback_query: types.CallbackQuery, state: FSMC
         print(f"Ошибка при удалении сообщения: {e}")
     await callback_query.message.answer("Молодец, так держать!", reply_markup=MAIN_MENU)
     await state.clear()
-    await callback_query.answer()
 
 @router.callback_query(lambda c: c.data == "workout_change")
 async def workout_change_callback(callback_query: types.CallbackQuery, state: FSMContext):
@@ -440,8 +463,8 @@ async def workout_change_callback(callback_query: types.CallbackQuery, state: FS
         await callback_query.message.answer("Генерация уже выполняется, подождите...")
         return
     await state.update_data(is_busy=True)
-    # Системное сообщение сразу
-    wait_msg = await callback_query.message.answer("Запрос принят, генерирую новую тренировку. Пожалуйста, подождите...")
+    # UX: показываем сообщение об ожидании
+    wait_msg = await callback_query.message.answer("Обрабатываю, пожалуйста, подождите...")
     try:
         user = await get_user_by_telegram_id(callback_query.from_user.id)
         workout_history = data.get("workout_history", [])
@@ -463,14 +486,18 @@ async def workout_change_callback(callback_query: types.CallbackQuery, state: FS
             await callback_query.message.delete()
         except Exception as e:
             print(f"Ошибка при удалении сообщения: {e}")
-        # Удаляем уведомление о генерации
+        # Удаляем уведомление об ожидании
         try:
             await wait_msg.delete()
         except Exception as e:
-            print(f"Ошибка при удалении сообщения: {e}")
+            print(f"Ошибка при удалении wait_msg: {e}")
         # Отправляем новую тренировку с кнопками
         await callback_query.message.answer(new_workout_text, reply_markup=kb)
     except Exception as e:
+        try:
+            await wait_msg.delete()
+        except Exception as e2:
+            print(f"Ошибка при удалении wait_msg: {e2}")
         await callback_query.message.answer("Произошла ошибка при генерации новой тренировки. Попробуйте позже.")
         print(f"Ошибка в workout_change_callback: {e}")
         await state.update_data(is_busy=False)
@@ -508,8 +535,9 @@ async def process_calories_photo(message: types.Message, state: FSMContext):
         return
     await state.update_data(is_busy=True)
     await mark_active(message)
+    # UX: показываем сообщение об ожидании
+    wait_msg = await message.answer("Анализирую фото, пожалуйста, подождите...")
     try:
-        await message.answer("Команда принята, анализирую фото...")
         user = await get_user_by_telegram_id(message.from_user.id)
         photo = message.photo[-1]
         file = await message.bot.get_file(photo.file_id)
@@ -525,6 +553,10 @@ async def process_calories_photo(message: types.Message, state: FSMContext):
                 data = json.loads(gpt_response[json_start:json_end+1])
                 desc = data.get("description", "Фото еды")
                 if not desc or not desc.strip():
+                    try:
+                        await wait_msg.delete()
+                    except Exception as e:
+                        print(f"Ошибка при удалении wait_msg: {e}")
                     await message.answer(
                         "Не удалось сохранить приём пищи: описание отсутствует. Попробуйте ещё раз.",
                         reply_markup=MAIN_MENU
@@ -540,6 +572,10 @@ async def process_calories_photo(message: types.Message, state: FSMContext):
                     fats=data.get("fats"),
                     carbs=data.get("carbs")
                 )
+                try:
+                    await wait_msg.delete()
+                except Exception as e:
+                    print(f"Ошибка при удалении wait_msg: {e}")
                 await message.answer(
                     f"Описание: {desc}\n"
                     f"Калории: {data.get('calories', '')}\n"
@@ -547,12 +583,24 @@ async def process_calories_photo(message: types.Message, state: FSMContext):
                     reply_markup=MAIN_MENU
                 )
             except Exception as e:
+                try:
+                    await wait_msg.delete()
+                except Exception as e2:
+                    print(f"Ошибка при удалении wait_msg: {e2}")
                 await message.answer("Ошибка при разборе ответа ИИ. Попробуйте позже.")
                 print(f"Ошибка парсинга JSON из Vision: {e}")
         else:
+            try:
+                await wait_msg.delete()
+            except Exception as e:
+                print(f"Ошибка при удалении wait_msg: {e}")
             await message.answer(gpt_response, reply_markup=MAIN_MENU)
         await state.clear()
     except Exception as e:
+        try:
+            await wait_msg.delete()
+        except Exception as e2:
+            print(f"Ошибка при удалении wait_msg: {e2}")
         await message.answer("Произошла ошибка при обработке фото. Попробуйте позже.")
         print(f"Ошибка в process_calories_photo: {e}")
     finally:
@@ -581,8 +629,9 @@ async def show_history(message: types.Message, state: FSMContext):
         await message.answer("История уже формируется, подождите...")
         return
     await state.update_data(is_busy=True)
+    # UX: показываем сообщение об ожидании
+    wait_msg = await message.answer("Формирую историю, пожалуйста, подождите...")
     # Системное сообщение сразу
-    await message.answer("Формирую историю, пожалуйста, подождите...")
     await state.clear()
     await mark_active(message)
     menu = await get_main_menu(message.from_user.id)
@@ -590,6 +639,10 @@ async def show_history(message: types.Message, state: FSMContext):
         user = await get_user_by_telegram_id(message.from_user.id)
         if not await require_payment(message, user):
             await state.update_data(is_busy=False)
+            try:
+                await wait_msg.delete()
+            except Exception as e:
+                print(f"Ошибка при удалении wait_msg: {e}")
             return
         print("DEBUG: show_history - user and payment ok")
         workouts = await get_user_workouts(user["id"])
@@ -669,12 +722,20 @@ async def show_history(message: types.Message, state: FSMContext):
         file_stream.seek(0)
         excel_file = BufferedInputFile(file_stream.read(), filename="history.xlsx")
         print("DEBUG: show_history - Excel file ready, sending to user")
+        try:
+            await wait_msg.delete()
+        except Exception as e:
+            print(f"Ошибка при удалении wait_msg: {e}")
         await message.answer_document(
             excel_file,
             caption="Ваша история в формате Excel",
             reply_markup=menu
         )
     except Exception as e:
+        try:
+            await wait_msg.delete()
+        except Exception as e2:
+            print(f"Ошибка при удалении wait_msg: {e2}")
         await message.answer("Произошла ошибка при формировании Excel-файла. Попробуйте позже.", reply_markup=menu)
         print(f"Ошибка в show_history: {e}")
     finally:
@@ -729,9 +790,11 @@ async def push_cancel(callback_query: types.CallbackQuery, state: FSMContext):
 
 @router.callback_query(lambda c: c.data == "push_confirm")
 async def push_confirm(callback_query: types.CallbackQuery, state: FSMContext):
+    # Сразу отвечаем на callback, чтобы Telegram не ругался на долгие операции
+    await callback_query.answer()
     data = await state.get_data()
     if data.get("is_busy"):
-        await callback_query.answer("Рассылка уже выполняется, подождите...", show_alert=True)
+        await callback_query.message.answer("Рассылка уже выполняется, подождите...")
         return
     await state.update_data(is_busy=True)
     text = data.get("push_text", "")
@@ -845,12 +908,17 @@ async def cmd_cancel_autopay(message: types.Message):
 
 @router.message(F.text & ~F.text.in_(MENU_BUTTONS) & ~F.text.startswith("/"), default_state, flags={"order": 100})
 async def universal_ai_handler(message: types.Message, state: FSMContext):
-    await message.answer("Команда принята, думаю...")
+    # UX: показываем сообщение об ожидании
+    wait_msg = await message.answer("Думаю, пожалуйста, подождите...")
     await mark_active(message)
     print("universal_ai_handler called")
     try:
         user = await get_user_by_telegram_id(message.from_user.id)
         if not await require_payment(message, user):
+            try:
+                await wait_msg.delete()
+            except Exception as e:
+                print(f"Ошибка при удалении wait_msg: {e}")
             return
         gpt_response = await ask_gpt("", message.text)
         # Пытаемся найти JSON в ответе
@@ -863,6 +931,10 @@ async def universal_ai_handler(message: types.Message, state: FSMContext):
                 if data.get("type") == "meal":
                     desc = data.get("description", "")
                     if not desc or not desc.strip():
+                        try:
+                            await wait_msg.delete()
+                        except Exception as e:
+                            print(f"Ошибка при удалении wait_msg: {e}")
                         await message.answer(
                             "Не удалось сохранить приём пищи: описание отсутствует. Попробуйте ещё раз.",
                             reply_markup=MAIN_MENU
@@ -876,6 +948,10 @@ async def universal_ai_handler(message: types.Message, state: FSMContext):
                         fats=data.get("fats"),
                         carbs=data.get("carbs")
                     )
+                    try:
+                        await wait_msg.delete()
+                    except Exception as e:
+                        print(f"Ошибка при удалении wait_msg: {e}")
                     await message.answer(
                         f"Записал приём пищи: {desc} ({data.get('calories', '')} ккал)\n"
                         f"Б: {data.get('proteins', '—')} г, Ж: {data.get('fats', '—')} г, У: {data.get('carbs', '—')} г"
@@ -884,24 +960,48 @@ async def universal_ai_handler(message: types.Message, state: FSMContext):
                 elif data.get("type") == "workout":
                     workout_desc = data.get("description", "")
                     if not workout_desc or not workout_desc.strip():
+                        try:
+                            await wait_msg.delete()
+                        except Exception as e:
+                            print(f"Ошибка при удалении wait_msg: {e}")
                         await message.answer(
                             "Не удалось сохранить тренировку: описание отсутствует. Попробуйте ещё раз.",
                             reply_markup=MAIN_MENU
                         )
                         return
                     await add_workout(user_id=user["id"], workout_type=data.get("workout_type", "custom"), details=workout_desc, calories_burned=data.get("calories_burned"))
+                    try:
+                        await wait_msg.delete()
+                    except Exception as e:
+                        print(f"Ошибка при удалении wait_msg: {e}")
                     await message.answer("Записал тренировку: {}".format(workout_desc))
                     saved = True
             except Exception as e:
+                try:
+                    await wait_msg.delete()
+                except Exception as e2:
+                    print(f"Ошибка при удалении wait_msg: {e2}")
                 print(f"Ошибка парсинга JSON из ответа GPT: {e}")
         # Отправляем сам ответ ИИ (без JSON)
         if saved:
             # Если был JSON, отправляем только текст до него (совет/комментарий)
             if json_start > 0:
+                try:
+                    await wait_msg.delete()
+                except Exception as e:
+                    print(f"Ошибка при удалении wait_msg: {e}")
                 await message.answer(gpt_response[:json_start].strip())
         else:
+            try:
+                await wait_msg.delete()
+            except Exception as e:
+                print(f"Ошибка при удалении wait_msg: {e}")
             await message.answer(gpt_response)
     except Exception as e:
+        try:
+            await wait_msg.delete()
+        except Exception as e2:
+            print(f"Ошибка при удалении wait_msg: {e2}")
         await message.answer("Произошла ошибка при обработке запроса к ИИ. Попробуйте позже.")
         print(f"Ошибка в universal_ai_handler: {e}")
 
