@@ -10,7 +10,7 @@ from .db import (
     get_user_workouts, get_user_meals, remove_payment_method_id
 )
 from .ai import ask_gpt, generate_workout_via_ai, analyze_food_photo_via_ai, generate_workout_via_ai_with_history
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton, InputFile
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton, FSInputFile
 from aiogram.types import BufferedInputFile
 import io
 import openpyxl
@@ -18,6 +18,7 @@ from openpyxl.styles import Font, Alignment, Border, Side
 import httpx
 from .payments import create_payment_link
 from datetime import datetime
+import random
 
 SUBSCRIPTION_AMOUNT = os.getenv("SUBSCRIPTION_AMOUNT", "800")
 MANAGER_NICK = os.getenv("MANAGER_NICK", "@your_manager")
@@ -90,6 +91,7 @@ router = Router()
 @router.message(Command("start"))
 async def cmd_start(message: types.Message, state: FSMContext):
     await mark_active(message)
+    wait_msg = await message.answer("Обрабатываю, пожалуйста, подождите...")
     try:
         user = await get_user_by_telegram_id(message.from_user.id)
         menu = await get_main_menu(message.from_user.id)
@@ -109,21 +111,42 @@ async def cmd_start(message: types.Message, state: FSMContext):
                 age=None,
                 gender=None
             )
-            await message.answer(
-                "Добро пожаловать в SUPERFIT — твой персональный помощник в мире фитнеса и здорового питания!\n\n"
-                "💪 Что я умею?\n"
-                "📋 Составляю индивидуальные программы тренировок по международным стандартам, подходящие под твою цель и уровень.\n"
-                "📸 Умею считать калории по фотографиям твоих блюд, чтобы ты всегда знал, что и сколько ты ешь.\n\n"
-                "🎁 Все платные функции доступны тебе бесплатно на 2 недели! После этого периода потребуется оформить подписку.\n\n"
-                "Для того чтобы я выдал первую пробную тренировку, давай пройдем короткий опрос:\n\n"
-                "1. Какая у тебя цель? (Похудеть / Набрать массу / Поддержать форму)"
-            )
+            # Отправляем приветственную картинку и текст
+            welcome_image_path = "bot/images/welcome.jpg"  # или png, если у тебя другой формат
+            try:
+                photo = FSInputFile(welcome_image_path)
+                await message.answer_photo(
+                    photo,
+                    caption=(
+                        "Добро пожаловать в SUPERFIT — твой персональный помощник в мире фитнеса и здорового питания!\n\n"
+                        "💪 Что я умею?\n\n"
+                        "📋 Составляю индивидуальные программы тренировок по международным стандартам, подходящие под твою цель и уровень.\n"
+                        "📸 Умею считать калории по фотографиям твоих блюд, чтобы ты мог следить за питанием.\n"
+                        "🎁 Все платные функции доступны тебе бесплатно на 2 недели! После этого периода потребуется оформить подписку.\n\n\n"
+                        "Для того чтобы я выдал первую пробную тренировку, давай пройдем короткий опрос:\n\n"
+                        "1. Какая у тебя цель? (Похудеть / Набрать массу / Поддержать форму)"
+                    )
+                )
+                try:
+                    await wait_msg.delete()
+                except Exception as e:
+                    print(f"Ошибка при удалении wait_msg: {e}")
+            except Exception as e:
+                print(f"Ошибка при отправке приветственной картинки: {e}")
             await state.set_state(ProfileStates.goal)
             return
         await message.answer("Добро пожаловать! У тебя активна подписка. Используй меню ниже:", reply_markup=menu)
+        try:
+            await wait_msg.delete()
+        except Exception as e:
+            print(f"Ошибка при удалении wait_msg: {e}")
     except Exception as e:
         await message.answer("Произошла ошибка при обработке команды. Попробуйте позже.")
         print(f"Ошибка в /start: {e}")
+        try:
+            await wait_msg.delete()
+        except Exception as e2:
+            print(f"Ошибка при удалении wait_msg: {e2}")
 
 @router.message(ProfileStates.goal)
 async def process_goal(message: types.Message, state: FSMContext):
@@ -400,6 +423,20 @@ async def get_new_workout(message: types.Message, state: FSMContext):
             return
         # Сохраняем тренировку и историю в FSMContext
         await state.update_data(workout_text=workout_text, workout_history=[{"role": "user", "content": "Запрос тренировки"}, {"role": "assistant", "content": workout_text}], is_busy=False)
+        # Картинки для тренировок
+        workout_images = [
+            "bot/images/workouts/rndm_1.png",
+            "bot/images/workouts/rndm_2.png",
+            "bot/images/workouts/rndm_3.png",
+            "bot/images/workouts/rndm_4.png",
+            "bot/images/workouts/rndm_5.png"
+        ]
+        try:
+            chosen_image = random.choice(workout_images)
+            photo = FSInputFile(chosen_image)
+            await message.answer_photo(photo)
+        except Exception as e:
+            print(f"Ошибка при отправке картинки тренировки: {e}")
         # Кнопки
         kb = InlineKeyboardMarkup(
             inline_keyboard=[
@@ -790,7 +827,6 @@ async def push_cancel(callback_query: types.CallbackQuery, state: FSMContext):
 
 @router.callback_query(lambda c: c.data == "push_confirm")
 async def push_confirm(callback_query: types.CallbackQuery, state: FSMContext):
-    # Сразу отвечаем на callback, чтобы Telegram не ругался на долгие операции
     await callback_query.answer()
     data = await state.get_data()
     if data.get("is_busy"):
