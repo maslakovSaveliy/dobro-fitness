@@ -312,36 +312,79 @@ async def profile_confirm_callback(callback_query: types.CallbackQuery, state: F
                     reply_markup=MAIN_MENU
                 )
                 return
-            # Проверяем статус оплаты
             try:
                 await wait_msg.delete()
             except Exception as e:
                 print(f"Ошибка при удалении wait_msg: {e}")
-            if user.get("is_paid"):
-                await add_workout(
-                    user_id=user["id"],
-                    workout_type="personal",
-                    details=workout_text
-                )
-                await callback_query.message.answer(
-                    "Профиль обновлён! Вот твой новый персональный план:\n\n" +
-                    workout_text
-                )
-            else:
-                await add_workout(
-                    user_id=user["id"],
-                    workout_type="free_trial",
-                    details=workout_text
-                )
-                await callback_query.message.answer(
-                    "Спасибо! Вот твоя первая бесплатная тренировка:\n\n" +
-                    workout_text +
-                    f"\n\nЕсли хочешь получить доступ к персональным тренировкам и другим функциям — оформи подписку! Стоимость подписки: {SUBSCRIPTION_AMOUNT}₽. /pay"
-                )
-            menu = await get_main_menu(callback_query.from_user.id)
-            await callback_query.message.answer("Меню доступно ниже 👇", reply_markup=menu)
+            # Парсим заголовок, упражнения и совет по питанию
+            lines = workout_text.strip().splitlines()
+            header_lines = []
+            body_lines = []
+            found_body = False
+            nutrition_advice = None
+            for line in lines:
+                if not found_body:
+                    header_lines.append(line)
+                    if line.strip().lower().startswith("план тренировки на сегодня"):
+                        found_body = True
+                else:
+                    # Ищем совет по питанию
+                    if line.strip().lower().startswith("совет по питанию"):
+                        nutrition_advice = line.strip()
+                    else:
+                        body_lines.append(line)
+            header = "\n".join(header_lines).strip()
+            if nutrition_advice:
+                header = f"{header}\n\n{nutrition_advice}"
+            body = "\n".join(body_lines).strip()
+            # Картинки для тренировок
+            workout_images = [
+                "bot/images/workouts/rndm_1.png",
+                "bot/images/workouts/rndm_2.png",
+                "bot/images/workouts/rndm_3.png",
+                "bot/images/workouts/rndm_4.png",
+                "bot/images/workouts/rndm_5.png"
+            ]
+            image_msg = None
+            try:
+                chosen_image = random.choice(workout_images)
+                photo = FSInputFile(chosen_image)
+                image_msg = await callback_query.message.answer_photo(photo, caption=header)
+            except Exception as e:
+                print(f"Ошибка при отправке картинки тренировки: {e}")
+            kb = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(text="Выполнил", callback_data="workout_done")],
+                    [InlineKeyboardButton(text="Изменить тренировку", callback_data="workout_change")],
+                ]
+            )
+            text_msg = await callback_query.message.answer(body, reply_markup=kb)
+            await add_workout(
+                user_id=user["id"],
+                workout_type="personal" if user.get("is_paid") else "free_trial",
+                details=workout_text
+            )
+            await state.update_data(
+                workout_text=workout_text,
+                workout_history=[{"role": "user", "content": "Запрос тренировки"}, {"role": "assistant", "content": workout_text}],
+                is_busy=False,
+                workout_image_msg_id=image_msg.message_id if image_msg else None,
+                workout_text_msg_id=text_msg.message_id
+            )
+            await callback_query.message.answer("Меню доступно ниже 👇", reply_markup=await get_main_menu(callback_query.from_user.id))
         else:
             # Полностью очищаем FSMContext перед повторным прохождением анкеты
+            # Удаляем сообщения тренировки, если они есть
+            data = await state.get_data()
+            image_msg_id = data.get("workout_image_msg_id")
+            text_msg_id = data.get("workout_text_msg_id")
+            try:
+                if image_msg_id:
+                    await callback_query.bot.delete_message(callback_query.message.chat.id, image_msg_id)
+                if text_msg_id:
+                    await callback_query.bot.delete_message(callback_query.message.chat.id, text_msg_id)
+            except Exception as e:
+                print(f"Ошибка при удалении сообщений тренировки при сбросе анкеты: {e}")
             await state.clear()
             await state.set_state(ProfileStates.goal)
             await callback_query.message.answer(
@@ -421,8 +464,27 @@ async def get_new_workout(message: types.Message, state: FSMContext):
             )
             await state.update_data(is_busy=False)
             return
-        # Сохраняем тренировку и историю в FSMContext
-        await state.update_data(workout_text=workout_text, workout_history=[{"role": "user", "content": "Запрос тренировки"}, {"role": "assistant", "content": workout_text}], is_busy=False)
+        # Парсим заголовок, упражнения и совет по питанию
+        lines = workout_text.strip().splitlines()
+        header_lines = []
+        body_lines = []
+        found_body = False
+        nutrition_advice = None
+        for line in lines:
+            if not found_body:
+                header_lines.append(line)
+                if line.strip().lower().startswith("план тренировки на сегодня"):
+                    found_body = True
+            else:
+                # Ищем совет по питанию
+                if line.strip().lower().startswith("совет по питанию"):
+                    nutrition_advice = line.strip()
+                else:
+                    body_lines.append(line)
+        header = "\n".join(header_lines).strip()
+        if nutrition_advice:
+            header = f"{header}\n\n{nutrition_advice}"
+        body = "\n".join(body_lines).strip()
         # Картинки для тренировок
         workout_images = [
             "bot/images/workouts/rndm_1.png",
@@ -431,10 +493,11 @@ async def get_new_workout(message: types.Message, state: FSMContext):
             "bot/images/workouts/rndm_4.png",
             "bot/images/workouts/rndm_5.png"
         ]
+        image_msg = None
         try:
             chosen_image = random.choice(workout_images)
             photo = FSInputFile(chosen_image)
-            await message.answer_photo(photo)
+            image_msg = await message.answer_photo(photo, caption=header)
         except Exception as e:
             print(f"Ошибка при отправке картинки тренировки: {e}")
         # Кнопки
@@ -454,7 +517,14 @@ async def get_new_workout(message: types.Message, state: FSMContext):
             workout_type="personal",
             details=workout_text
         )
-        await message.answer(workout_text, reply_markup=kb)
+        text_msg = await message.answer(body, reply_markup=kb)
+        await state.update_data(
+            workout_text=workout_text,
+            workout_history=[{"role": "user", "content": "Запрос тренировки"}, {"role": "assistant", "content": workout_text}],
+            is_busy=False,
+            workout_image_msg_id=image_msg.message_id if image_msg else None,
+            workout_text_msg_id=text_msg.message_id
+        )
     except Exception as e:
         try:
             await wait_msg.delete()
@@ -470,6 +540,8 @@ async def workout_done_callback(callback_query: types.CallbackQuery, state: FSMC
     await callback_query.answer()
     data = await state.get_data()
     workout_text = data.get("workout_text")
+    image_msg_id = data.get("workout_image_msg_id")
+    text_msg_id = data.get("workout_text_msg_id")
     if not workout_text or not workout_text.strip():
         await callback_query.message.answer(
             "Не удалось сохранить тренировку: описание отсутствует. Пожалуйста, запроси новую тренировку и попробуй снова.",
@@ -484,11 +556,14 @@ async def workout_done_callback(callback_query: types.CallbackQuery, state: FSMC
         workout_type="personal",
         details=workout_text
     )
-    # Удаляем сообщение с кнопками
+    # Удаляем оба сообщения
     try:
-        await callback_query.message.delete()
+        if image_msg_id:
+            await callback_query.bot.delete_message(callback_query.message.chat.id, image_msg_id)
+        if text_msg_id:
+            await callback_query.bot.delete_message(callback_query.message.chat.id, text_msg_id)
     except Exception as e:
-        print(f"Ошибка при удалении сообщения: {e}")
+        print(f"Ошибка при удалении сообщений тренировки: {e}")
     await callback_query.message.answer("Молодец, так держать!", reply_markup=MAIN_MENU)
     await state.clear()
 
@@ -509,27 +584,73 @@ async def workout_change_callback(callback_query: types.CallbackQuery, state: FS
         workout_history.append({"role": "user", "content": "Не нравится, давай другую тренировку."})
         # Формируем промпт для новой тренировки с историей
         new_workout_text = await generate_workout_via_ai_with_history(user, workout_history)
-        # Обновляем историю
-        workout_history.append({"role": "assistant", "content": new_workout_text})
-        await state.update_data(workout_text=new_workout_text, workout_history=workout_history, is_busy=False)
+        # Парсим заголовок, упражнения и совет по питанию
+        lines = new_workout_text.strip().splitlines()
+        header_lines = []
+        body_lines = []
+        found_body = False
+        nutrition_advice = None
+        for line in lines:
+            if not found_body:
+                header_lines.append(line)
+                if line.strip().lower().startswith("план тренировки на сегодня"):
+                    found_body = True
+            else:
+                # Ищем совет по питанию
+                if line.strip().lower().startswith("совет по питанию"):
+                    nutrition_advice = line.strip()
+                else:
+                    body_lines.append(line)
+        header = "\n".join(header_lines).strip()
+        if nutrition_advice:
+            header = f"{header}\n\n{nutrition_advice}"
+        body = "\n".join(body_lines).strip()
+        # Картинки для тренировок
+        workout_images = [
+            "bot/images/workouts/rndm_1.png",
+            "bot/images/workouts/rndm_2.png",
+            "bot/images/workouts/rndm_3.png",
+            "bot/images/workouts/rndm_4.png",
+            "bot/images/workouts/rndm_5.png"
+        ]
+        image_msg = None
+        try:
+            chosen_image = random.choice(workout_images)
+            photo = FSInputFile(chosen_image)
+            image_msg = await callback_query.message.answer_photo(photo, caption=header)
+        except Exception as e:
+            print(f"Ошибка при отправке картинки тренировки: {e}")
+        # Кнопки
         kb = InlineKeyboardMarkup(
             inline_keyboard=[
                 [InlineKeyboardButton(text="Выполнил", callback_data="workout_done")],
                 [InlineKeyboardButton(text="Изменить тренировку", callback_data="workout_change")],
             ]
         )
-        # Удаляем старое сообщение с кнопками
-        try:
-            await callback_query.message.delete()
-        except Exception as e:
-            print(f"Ошибка при удалении сообщения: {e}")
-        # Удаляем уведомление об ожидании
         try:
             await wait_msg.delete()
         except Exception as e:
             print(f"Ошибка при удалении wait_msg: {e}")
-        # Отправляем новую тренировку с кнопками
-        await callback_query.message.answer(new_workout_text, reply_markup=kb)
+        text_msg = await callback_query.message.answer(body, reply_markup=kb)
+        # Обновляем историю
+        workout_history.append({"role": "assistant", "content": new_workout_text})
+        await state.update_data(
+            workout_text=new_workout_text,
+            workout_history=workout_history,
+            is_busy=False,
+            workout_image_msg_id=image_msg.message_id if image_msg else None,
+            workout_text_msg_id=text_msg.message_id
+        )
+        # Удаляем старые сообщения
+        old_image_msg_id = data.get("workout_image_msg_id")
+        old_text_msg_id = data.get("workout_text_msg_id")
+        try:
+            if old_image_msg_id:
+                await callback_query.bot.delete_message(callback_query.message.chat.id, old_image_msg_id)
+            if old_text_msg_id:
+                await callback_query.bot.delete_message(callback_query.message.chat.id, old_text_msg_id)
+        except Exception as e:
+            print(f"Ошибка при удалении старых сообщений тренировки: {e}")
     except Exception as e:
         try:
             await wait_msg.delete()
