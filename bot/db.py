@@ -39,7 +39,7 @@ async def create_user(telegram_id: int, username: str = None, first_name: str = 
     if user:
         return user
     from datetime import datetime, timedelta
-    paid_until = (datetime.utcnow() + timedelta(days=14)).isoformat()
+    paid_until = (datetime.utcnow() + timedelta(days=31)).isoformat()
     payload = [{
         "telegram_id": telegram_id,
         "username": username,
