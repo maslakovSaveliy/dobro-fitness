@@ -7,6 +7,7 @@ from .handlers import *
 from .handlers import router
 from .scheduler import scheduler_start
 from .payments import register_yookassa_webhook
+from .broadcast import broadcast_router
 
 load_dotenv()
 
@@ -16,6 +17,7 @@ MODE = os.getenv("MODE", "polling")  # по умолчанию polling
 bot = Bot(token=TELEGRAM_TOKEN)
 storage = MemoryStorage()
 dp = Dispatcher(storage=storage)
+dp.include_router(broadcast_router)
 dp.include_router(router)
 
 async def on_startup(dispatcher, bot, app=None):

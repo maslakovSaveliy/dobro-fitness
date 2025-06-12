@@ -1065,6 +1065,12 @@ async def cmd_cancel_autopay(message: types.Message):
 
 @router.message(F.text & ~F.text.in_(MENU_BUTTONS) & ~F.text.startswith("/"), default_state, flags={"order": 100})
 async def universal_ai_handler(message: types.Message, state: FSMContext):
+    # Защита: если не админ и текст 'Пуш-рассылка' — игнорировать
+    if message.text == "Пуш-рассылка":
+        user = await get_user_by_telegram_id(message.from_user.id)
+        if not user or user.get("role") != "admin":
+            await message.answer("Нет доступа.")
+            return
     # UX: показываем сообщение об ожидании
     wait_msg = await message.answer("Думаю, пожалуйста, подождите...")
     await mark_active(message)
@@ -1165,6 +1171,12 @@ async def universal_ai_handler(message: types.Message, state: FSMContext):
 @router.message()
 async def any_message_handler(message: types.Message, state: FSMContext):
     print(f"DEBUG: any_message_handler called, message.text = '{message.text}'")
+    # Защита: если не админ и текст 'Пуш-рассылка' — игнорировать
+    if message.text == "Пуш-рассылка":
+        user = await get_user_by_telegram_id(message.from_user.id)
+        if not user or user.get("role") != "admin":
+            await message.answer("Нет доступа.")
+            return
     user = await get_user_by_telegram_id(message.from_user.id)
     menu = await get_main_menu(message.from_user.id)
     if user and not user.get("is_paid"):
